@@ -221,6 +221,28 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         slot.number:SetMouseVisible(true);
         slot.number:SetAllowDrop(true);
 
+        slot.joinButton = Turbine.UI.Label();
+        slot.joinButton:SetParent(slot);
+        slot.joinButton:SetPosition(0, 22);
+        slot.joinButton:SetSize(36, 14);
+        slot.joinButton:SetZOrder(4);
+        slot.joinButton:SetFont(Turbine.UI.Lotro.Font.Verdana10);
+        slot.joinButton:SetTextAlignment(Turbine.UI.ContentAlignment.MiddleCenter);
+        slot.joinButton:SetForeColor(Turbine.UI.Color(1, 1, 0.85, 0.55));
+        slot.joinButton:SetBackColor(Turbine.UI.Color(1, 0.04, 0.04, 0.05));
+        slot.joinButton:SetMouseVisible(true);
+        slot.joinButton.Click = function()
+            local cell = self:SelectCell(slotIndex);
+            if (cell) then
+                self:ToggleTriggerJoin();
+            end
+        end;
+        slot.joinButton.MouseClick = function(_, args)
+            if (args.Button == Turbine.UI.MouseButton.Left) then
+                slot.joinButton.Click();
+            end
+        end;
+
         local function HandleSkillDrop(_, args)
             local dragInfo = args and args.DragDropInfo;
             local shortcut = dragInfo and dragInfo:GetShortcut();
@@ -309,6 +331,14 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
     self.detail:SetSize(250, 38);
     self.detail:SetTextAlignment(Turbine.UI.ContentAlignment.MiddleLeft);
     self.detail:SetForeColor(Turbine.UI.Color(0.95, 0.95, 0.95));
+
+    self.triggerJoinButton = Turbine.UI.Lotro.Button();
+    self.triggerJoinButton:SetParent(self);
+    self.triggerJoinButton:SetPosition(230, 112);
+    self.triggerJoinButton:SetSize(250, 22);
+    self.triggerJoinButton.Click = function()
+        self:ToggleTriggerJoin();
+    end;
 
     self.skillTitle = Turbine.UI.Label();
     self.skillTitle:SetParent(self);
@@ -587,11 +617,12 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
             return;
         end
         local menu = Turbine.UI.ContextMenu();
-        for _, mode in ipairs({ "ordered", "any", "or", "allConditions", "anyConditions" }) do
+        for _, mode in ipairs({ "ordered", "any", "allConditions" }) do
             local selectedMode = mode;
             local item = Turbine.UI.MenuItem(L("editor.mode." .. mode));
             item.Click = function()
                 for _, index in ipairs(combo.rules) do
+                    ComboNextLogic.NormalizeRule(self.settings.seqs[index]);
                     self.settings.seqs[index].triggerMode = selectedMode;
                     self.settings.seqs[index].anyOrder = selectedMode == "any" or nil;
                 end
@@ -776,7 +807,8 @@ function ComboNextSequenceEditor:GetChain(combo)
     for _, index in ipairs(combo.rules) do
         local sequence = self.settings.seqs[index];
         for step = 1, ((sequence.starter or sequence.shared) and 0 or math.max(1, sequence.stepCount or 1)) do
-            chain[#chain + 1] = { role = "T"; record = sequence.skills and sequence.skills[step]; rule = index; slot = step; };
+            chain[#chain + 1] = { role = "T"; record = sequence.skills and sequence.skills[step];
+                rule = index; slot = step; join = ComboNextLogic.GetJoin(sequence, step) };
         end
         if (not sequence.open) then
             chain[#chain + 1] = { role = "F"; record = sequence.finisher; rule = index; slot = self.finisherSlot; };
@@ -799,22 +831,23 @@ function ComboNextSequenceEditor:ApplyChain(combo, chain, selectPosition)
     local first = combo.rules[1];
     local template = self.settings.seqs[first];
     local rules = {};
-    local current = { skills = {}; count = 0; };
+    local current = { skills = {}; joins = {}; count = 0; };
     local function flush(finisher, finisherEmpty, starter, shared, open)
         rules[#rules + 1] = {
             anyOrder = template.anyOrder;
-            triggerMode = template.triggerMode;
+            triggerMode = ComboNextLogic.GetMode(template);
             starter = starter or nil;
             shared = shared or nil;
             open = open or nil;
             name = template.name;
             groupId = template.groupId;
             skills = current.skills;
+            triggerJoins = current.joins;
             stepCount = math.max(1, current.count);
             finisher = finisher;
             emptyFinisher = finisherEmpty and true or nil;
         };
-        current = { skills = {}; count = 0; };
+        current = { skills = {}; joins = {}; count = 0; };
     end
     local landing = {};
     for position, cell in ipairs(chain) do
@@ -824,6 +857,9 @@ function ComboNextSequenceEditor:ApplyChain(combo, chain, selectPosition)
             end
             current.count = current.count + 1;
             current.skills[current.count] = cell.record;
+            if (current.count > 1) then
+                current.joins[current.count] = cell.join or "AND";
+            end
             landing[position] = { rule = #rules + 1; slot = current.count; };
         else
             local starter, shared = false, false;
@@ -835,6 +871,9 @@ function ComboNextSequenceEditor:ApplyChain(combo, chain, selectPosition)
                     shared = true;
                     for step = 1, previous.stepCount do
                         current.skills[step] = previous.skills[step];
+                        if (step > 1) then
+                            current.joins[step] = previous.triggerJoins[step];
+                        end
                     end
                     current.count = previous.stepCount;
                 end
@@ -860,6 +899,19 @@ function ComboNextSequenceEditor:ApplyChain(combo, chain, selectPosition)
     self.save();
     self.changed();
     self:Refresh();
+end
+
+function ComboNextSequenceEditor:ToggleTriggerJoin()
+    local _, combo = self:GetComboPosition();
+    local chain = combo and self:GetChain(combo);
+    local position = chain and self:FindCell(chain);
+    local cell = position and chain[position];
+    if (not cell or cell.role ~= "T" or cell.slot <= 1) then
+        return;
+    end
+    cell.join = cell.join == "OR" and "AND" or "OR";
+    self:ApplyChain(combo, chain, position);
+    self.status:SetText(L("editor.joinHint"));
 end
 
 function ComboNextSequenceEditor:InsertCell(role)
@@ -1207,6 +1259,9 @@ function ComboNextSequenceEditor:Refresh()
         slot.overlay:SetVisible(cell ~= nil);
         slot.number:SetVisible(cell ~= nil);
         slot.frame:SetVisible(cell ~= nil);
+        local showJoin = cell and cell.role == "T" and cell.slot > 1;
+        slot.joinButton:SetVisible(showJoin == true);
+        slot.joinButton:SetText(showJoin and L("editor.join." .. cell.join) or "");
         slot.frame:SetBackColor(isFinisher and Turbine.UI.Color(1, 0.95, 0.7, 0.1)
             or Turbine.UI.Color(1, 0.25, 0.55, 1));
         slot.number:SetText(cell and tostring(i) or "");
@@ -1228,6 +1283,10 @@ function ComboNextSequenceEditor:Refresh()
         and sequence.finisher or sequence.skills[self.selectedSlot]);
     local selectedTitle = self.selectedSlot == self.finisherSlot
         and L("editor.recommended") or L("editor.triggerSkill", self.selectedSlot);
+    local canJoin = sequence ~= nil and self.selectedSlot > 1 and self.selectedSlot <= self.maxSteps;
+    self.triggerJoinButton:SetVisible(canJoin);
+    self.triggerJoinButton:SetText(canJoin and L("editor.joinPrevious",
+        L("editor.join." .. ComboNextLogic.GetJoin(sequence, self.selectedSlot))) or "");
     local itemSelected = type(selected) == "table"
         and selected.shortcutType == Turbine.UI.Lotro.ShortcutType.Item;
     for _, control in ipairs({ self.itemTimerLabel, self.itemTimerText,

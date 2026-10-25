@@ -2,16 +2,18 @@
 
 Notable changes to ComboNext are documented here.
 
-Entries are grouped by release family (1.3 includes 1.30-1.38). Version groupings
+Entries are grouped by release family (1.3 includes 1.30-1.39). Version groupings
 before 1.35 were reconstructed from the feature set and are approximate.
 
 ## [Unreleased]
 
 - No unreleased changes yet.
 
-## [1.3] - through 1.38 (2026-10-25)
+## [1.3] - through 1.39 (2026-10-25)
 
-- Ordered events and all-events-in-any-order modes, plus event OR and live AND/OR condition modes (1.38). Existing combos keep their behavior.
+- Individual AND/OR connections between triggers replace combo-wide OR modes (1.39). AND is the default and binds before OR; clickable slot labels and a selected-trigger button change each connection.
+- Ordered events, any-order events and current-condition modes respect the per-trigger connections. Existing 1.38 OR rules migrate automatically without changing their meaning.
+- CN3 exports preserve the individual connections; CN1/CN2 imports remain supported.
 - Live conditions check current health and active/absent effects rather than requiring threshold/effect events in a particular order. Skills and chat can be combined as recent events.
 - Clearer progress messages show which event or condition is missing.
 - Optional ready-only finisher display, using skill cooldowns/usability and configurable item timers with an explicit Mark ready action. Unknown readiness is hidden in ready-only mode.

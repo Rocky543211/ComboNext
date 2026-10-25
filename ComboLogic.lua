@@ -1,29 +1,59 @@
 ComboNextLogic = {};
 
 function ComboNextLogic.GetMode(cfg)
-    return cfg.triggerMode or (cfg.anyOrder and "any" or "ordered");
+    local mode = cfg.triggerMode or (cfg.anyOrder and "any" or "ordered");
+    if (mode == "or") then
+        return "ordered";
+    elseif (mode == "anyConditions") then
+        return "allConditions";
+    end
+    return mode;
+end
+
+function ComboNextLogic.GetJoin(cfg, index)
+    if (index <= 1) then
+        return "AND";
+    end
+    local join = cfg.triggerJoins and cfg.triggerJoins[index];
+    if (join) then
+        return join;
+    end
+    return (cfg.triggerMode == "or" or cfg.triggerMode == "anyConditions") and "OR" or "AND";
+end
+
+function ComboNextLogic.NormalizeRule(cfg)
+    local joins = {};
+    for index = 2, cfg.stepCount or 1 do
+        joins[index] = ComboNextLogic.GetJoin(cfg, index);
+    end
+    cfg.triggerJoins = joins;
+    cfg.triggerMode = ComboNextLogic.GetMode(cfg);
+end
+
+-- AND groups are alternatives separated by OR.
+function ComboNextLogic.GetGroups(triggers)
+    local groups = {};
+    for index, trigger in ipairs(triggers) do
+        if (index == 1 or trigger.join == "OR") then
+            groups[#groups + 1] = { mode = triggers.mode; first = index };
+        end
+        local group = groups[#groups];
+        group[#group + 1] = trigger;
+    end
+    return groups;
 end
 
 function ComboNextLogic.IsCurrent(mode)
     return mode == "allConditions" or mode == "anyConditions";
 end
 
-function ComboNextLogic.Advance(state, triggers, matches)
+local function AdvanceGroup(state, triggers, matches)
     if (#triggers == 0) then
         state.progress, state.done, state.matched, state.lastProgressAt = 0, false, {}, nil;
         return;
     end
     if (state.done) then
         state.progress, state.done, state.matched, state.lastProgressAt = 0, false, {}, nil;
-    end
-    if (triggers.mode == "or") then
-        for _, trigger in ipairs(triggers) do
-            if (matches(trigger)) then
-                state.progress, state.done, state.matched = 1, true, { trigger.name };
-                return;
-            end
-        end
-        return;
     end
     if (triggers.mode == "any") then
         local used = {};
@@ -70,6 +100,29 @@ function ComboNextLogic.Advance(state, triggers, matches)
     end
 end
 
+function ComboNextLogic.Advance(state, triggers, matches)
+    local groups = ComboNextLogic.GetGroups(triggers);
+    if (#groups <= 1) then
+        AdvanceGroup(state, triggers, matches);
+        return;
+    end
+    if (state.done) then
+        state.branches = nil;
+    end
+    state.branches = state.branches or {};
+    local best;
+    for index, group in ipairs(groups) do
+        local branch = state.branches[index] or { progress = 0; done = false; matched = {} };
+        state.branches[index] = branch;
+        AdvanceGroup(branch, group, matches);
+        if (not best or (branch.done and not best.done)
+            or (branch.done == best.done and branch.progress > best.progress)) then
+            best = branch;
+        end
+    end
+    state.progress, state.done, state.matched = best.progress, best.done, best.matched;
+end
+
 function ComboNextLogic.EvaluateConditions(state, triggers, evaluate)
     state.progress, state.matched, state.conditions = 0, {}, {};
     for index, trigger in ipairs(triggers) do
@@ -80,8 +133,17 @@ function ComboNextLogic.EvaluateConditions(state, triggers, evaluate)
             state.matched[#state.matched + 1] = trigger.name;
         end
     end
-    local qualifies = #triggers > 0 and (state.progress == #triggers
-        or (triggers.mode == "anyConditions" and state.progress > 0));
+    local qualifies = false;
+    for _, group in ipairs(ComboNextLogic.GetGroups(triggers)) do
+        local groupTrue = true;
+        for offset = 1, #group do
+            if (state.conditions[group.first + offset - 1].satisfied ~= true) then
+                groupTrue = false;
+                break;
+            end
+        end
+        qualifies = qualifies or groupTrue;
+    end
     if (not qualifies) then
         state.conditionConsumed = nil;
     end
@@ -92,6 +154,7 @@ end
 function ComboNextLogic.Consume(state)
     state.progress, state.done, state.matched, state.lastProgressAt = 0, false, {}, nil;
     state.eventTimes = {};
+    state.branches = nil;
     state.conditionConsumed = true;
 end
 

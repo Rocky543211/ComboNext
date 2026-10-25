@@ -228,6 +228,7 @@ for i = 1, #settings.seqs do
     if (lastConfiguredStep > 0 and cfg.stepCount > lastConfiguredStep) then
         cfg.stepCount = lastConfiguredStep;
     end
+    ComboNextLogic.NormalizeRule(cfg);
 end
 if (#settings.seqs == 2
     and settings.seqs[1].name == "A" and settings.seqs[2].name == "B"
@@ -636,6 +637,7 @@ local function GetTriggers(cfg)
                 speech = type(value) == "table" and value.speech == true or nil;
                 icon = (not isEffect) and type(value) == "table" and value.icon or nil;
                 effectIcon = isEffect and tonumber(value.icon) or nil;
+                join = ComboNextLogic.GetJoin(cfg, i);
             });
         end
     end
@@ -1177,6 +1179,7 @@ function ui.ResetProgress()
         ui.states[r].eventTimes = {};
         ui.states[r].conditions = nil;
         ui.states[r].conditionConsumed = nil;
+        ui.states[r].branches = nil;
     end
     for r = #ui.states, #settings.seqs + 1, -1 do
         ui.states[r] = nil;
@@ -1240,33 +1243,38 @@ local function GetProgressText(index)
         return L("main.conditionsConsumed", cfg.name);
     end
     local triggers = GetTriggers(cfg);
-    local waiting = {};
-    local matched = {};
-    for _, name in ipairs(state.matched or {}) do
-        matched[name] = (matched[name] or 0) + 1;
-    end
-    for step, trigger in ipairs(triggers) do
-        local condition = state.conditions and state.conditions[step];
-        local label = type(trigger.value) == "table"
-            and (trigger.value.skillName or trigger.value.itemName);
-        label = label or trigger.name;
-        if (ComboNextLogic.IsCurrent(triggers.mode)) then
-            if (not condition or condition.satisfied ~= true) then
-                waiting[#waiting + 1] = condition and condition.detail or label;
-            end
-        elseif (matched[trigger.name] and matched[trigger.name] > 0) then
-            matched[trigger.name] = matched[trigger.name] - 1;
-        else
-            waiting[#waiting + 1] = label;
-            if (triggers.mode == "ordered") then
-                break;
+    local alternatives = {};
+    for groupIndex, group in ipairs(ComboNextLogic.GetGroups(triggers)) do
+        local waiting, matched = {}, {};
+        local branch = state.branches and state.branches[groupIndex] or state;
+        for _, name in ipairs(branch.matched or {}) do
+            matched[name] = (matched[name] or 0) + 1;
+        end
+        for offset, trigger in ipairs(group) do
+            local condition = state.conditions and state.conditions[group.first + offset - 1];
+            local label = type(trigger.value) == "table"
+                and (trigger.value.skillName or trigger.value.itemName);
+            label = label or trigger.name;
+            if (ComboNextLogic.IsCurrent(triggers.mode)) then
+                if (not condition or condition.satisfied ~= true) then
+                    waiting[#waiting + 1] = condition and condition.detail or label;
+                end
+            elseif (matched[trigger.name] and matched[trigger.name] > 0) then
+                matched[trigger.name] = matched[trigger.name] - 1;
+            else
+                waiting[#waiting + 1] = label;
+                if (triggers.mode == "ordered") then
+                    break;
+                end
             end
         end
+        if (#waiting > 0) then
+            local text = table.concat(waiting, L("main.andJoin"));
+            alternatives[#alternatives + 1] = #waiting > 1 and ("(" .. text .. ")") or text;
+        end
     end
-    if (#waiting > 0) then
-        local joiner = (triggers.mode == "or" or triggers.mode == "anyConditions")
-            and L("main.orJoin") or L("main.andJoin");
-        return L("main.waitingFor", cfg.name, table.concat(waiting, joiner));
+    if (#alternatives > 0) then
+        return L("main.waitingFor", cfg.name, table.concat(alternatives, L("main.orJoin")));
     end
     return L("main.comboProgress", cfg.name);
 end
@@ -1558,6 +1566,16 @@ local function WouldAdvance(state, triggers, skillName, skillIcon)
     for index, name in ipairs(state.matched or {}) do
         candidate.matched[index] = name;
     end
+    if (state.branches) then
+        candidate.branches = {};
+        for index, branch in ipairs(state.branches) do
+            local copy = { progress = branch.progress; done = branch.done; matched = {} };
+            for step, name in ipairs(branch.matched) do
+                copy.matched[step] = name;
+            end
+            candidate.branches[index] = copy;
+        end
+    end
     AdvanceState(candidate, triggers, skillName, skillIcon);
     if (candidate.progress ~= state.progress or candidate.done ~= state.done) then
         return true;
@@ -1565,6 +1583,17 @@ local function WouldAdvance(state, triggers, skillName, skillIcon)
     for index, name in ipairs(candidate.matched) do
         if (name ~= state.matched[index]) then
             return true;
+        end
+        for index, branch in ipairs(candidate.branches or {}) do
+            local previous = state.branches and state.branches[index];
+            if (not previous or previous.progress ~= branch.progress or previous.done ~= branch.done) then
+                return true;
+            end
+            for step, name in ipairs(branch.matched) do
+                if (previous.matched[step] ~= name) then
+                    return true;
+                end
+            end
         end
     end
     return false;
@@ -2239,6 +2268,7 @@ ui.ticker.Update = function()
             and state.progress > 0 and state.lastProgressAt
             and now - state.lastProgressAt > timeout) then
             state.progress, state.done, state.matched, state.lastProgressAt = 0, false, {}, nil;
+            state.branches = nil;
             ui.recommendations[index] = nil;
             resetAny = true;
         end
@@ -2555,9 +2585,14 @@ function shellCommand:Execute(_, args)
                 end
                 combos = combos + 1;
                 local mode = ComboNextLogic.GetMode(combo);
-                if (mode ~= "ordered" and mode ~= "any" and mode ~= "or"
-                    and mode ~= "allConditions" and mode ~= "anyConditions") then
+                if (mode ~= "ordered" and mode ~= "any" and mode ~= "allConditions") then
                     error("combo " .. index .. " has invalid trigger mode");
+                end
+                for step = 2, combo.stepCount do
+                    local join = ComboNextLogic.GetJoin(combo, step);
+                    if (join ~= "AND" and join ~= "OR") then
+                        error("combo " .. index .. " trigger " .. step .. " has invalid AND/OR connector");
+                    end
                 end
                 for step = 1, combo.stepCount do
                     local record = combo.skills[step];

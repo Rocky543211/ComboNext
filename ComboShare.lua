@@ -6,7 +6,7 @@ import "ComboNext.ComboLogic";
 import "ComboNext.Localization";
 
 local L = ComboNextL;
-local HEADER = "CN2";
+local HEADER = "CN3";
 local MAX_IMPORT_COMBOS = 60;
 
 local function Escape(text)
@@ -71,13 +71,18 @@ local function EncodeCombo(rules, index, findSkill)
     local fields = { name };
     for _, cfg in ipairs(rules) do
         local tokens = {};
+        local joins = {};
         local steps = math.max(1, math.min(ComboNextConstants.maxSteps, cfg.stepCount or 1));
         for step = 1, steps do
             tokens[step] = EncodeRecord(cfg.skills and cfg.skills[step], findSkill);
+            if (step > 1) then
+                joins[#joins + 1] = ComboNextLogic.GetJoin(cfg, step) == "OR" and "O" or "A";
+            end
         end
         local finisher = EncodeRecord(cfg.finisher, findSkill);
         if (finisher ~= "" or table.concat(tokens) ~= "") then
-            fields[#fields + 1] = tostring(steps) .. ":" .. ComboNextLogic.GetMode(cfg);
+            fields[#fields + 1] = tostring(steps) .. ":" .. ComboNextLogic.GetMode(cfg)
+                .. ":" .. table.concat(joins);
             fields[#fields + 1] = table.concat(tokens, ",");
             fields[#fields + 1] = finisher;
         end
@@ -261,7 +266,7 @@ end
 function ComboNextShareWindow:Import(replace)
     local text = string.gsub(self.box:GetText() or "", "%s+", "");
     local parts = Split(text, "!");
-    if ((parts[1] ~= HEADER and parts[1] ~= "CN1") or #parts < 2) then
+    if ((parts[1] ~= HEADER and parts[1] ~= "CN2" and parts[1] ~= "CN1") or #parts < 2) then
         self.status:SetText(L("share.invalid"));
         return;
     end
@@ -276,11 +281,18 @@ function ComboNextShareWindow:Import(replace)
         end
         local groupRules = {};
         for base = 2, #fields, 3 do
-            local stepText, mode;
-            if (parts[1] == HEADER) then
-                stepText, mode = string.match(fields[base] or "", "^(%d+):(%a+)$");
+            local stepText, mode, joins;
+            if (parts[1] == HEADER or parts[1] == "CN2") then
+                if (parts[1] == HEADER) then
+                    stepText, mode, joins = string.match(fields[base] or "", "^(%d+):(%a+):([AO]*)$");
+                else
+                    stepText, mode = string.match(fields[base] or "", "^(%d+):(%a+)$");
+                end
                 if (not stepText or (mode ~= "ordered" and mode ~= "any" and mode ~= "or"
-                    and mode ~= "allConditions" and mode ~= "anyConditions")) then
+                    and mode ~= "allConditions" and mode ~= "anyConditions")
+                    or (parts[1] == HEADER and (mode == "or" or mode == "anyConditions"
+                        or tonumber(stepText) < 1 or tonumber(stepText) > maxSteps
+                        or #joins ~= tonumber(stepText) - 1))) then
                     self.status:SetText(L("share.invalid"));
                     return;
                 end
@@ -295,6 +307,14 @@ function ComboNextShareWindow:Import(replace)
                 triggerMode = mode;
                 anyOrder = mode == "any" or nil;
             };
+            if (joins) then
+                cfg.triggerJoins = {};
+                for step = 2, steps do
+                    cfg.triggerJoins[step] = string.sub(joins, step - 1, step - 1) == "O"
+                        and "OR" or "AND";
+                end
+            end
+            ComboNextLogic.NormalizeRule(cfg);
             local tokens = Split(fields[base + 1] or "", ",");
             local last = 0;
             for step = 1, math.min(steps, #tokens) do
@@ -303,6 +323,10 @@ function ComboNextShareWindow:Import(replace)
                     cfg.skills[step] = record;
                     last = step;
                 elseif (record == false) then
+                    if (parts[1] == HEADER) then
+                        self.status:SetText(L("share.invalid"));
+                        return;
+                    end
                     skipped = skipped + 1;
                 end
             end

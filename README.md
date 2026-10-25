@@ -6,7 +6,7 @@ ComboNext is a player-created combo advisor for **The Lord of the Rings Online**
 
 - Create and edit named combos with skill triggers and recommended finishers.
 - Match triggers from combat chat, local skill-use events, captured chat phrases, and configured effects.
-- Use ordered events, all events in any order, a single event (OR), or live AND/OR conditions.
+- Connect individual triggers with AND/OR, using ordered events, any-order events, or current conditions.
 - Check effect families, exact raid effects, and health thresholds on yourself or your target.
 - Choose trigger skills from the class skill catalog or drag shortcuts from your action bar.
 - Share combo configurations by exporting text to copy or importing text from another player.
@@ -45,18 +45,33 @@ Use **Share combos** in the editor to export or import combo text. Imports can b
 
 ### Trigger logic
 
-Click the trigger-mode button near the bottom of the editor to choose:
+**AND is the default between triggers.** Click the AND/OR label on a trigger slot
+to toggle its connection to the previous trigger. Alternatively, select that trigger
+and use the connection button above its details. The first trigger has no preceding
+connection; finishers are not connectors.
+
+For example, add **Health below 50%**, then **Poison**, and set the Poison trigger's
+connection to **OR**. Either low health or poison can recommend that rule's skill.
+Use **AND** instead to require both.
+
+AND binds before OR: `Poison OR Health below 50% AND Wound` means
+`Poison OR (Health below 50% AND Wound)`. Different trigger/finisher rules inside
+one combo keep their own connections.
+
+The trigger-mode button below **Share combos** now only chooses how triggers are
+observed; there are no combo-wide OR choices:
 
 | Mode | Meaning |
 | --- | --- |
-| Ordered events | Each event must happen in the displayed order. |
-| All events, any order | Every event must happen, but the order does not matter. |
-| Any event (OR) | Any one of the configured events completes the rule. |
-| All conditions (AND) | Every condition must be true at the same time. |
-| Any condition (OR) | One currently true condition is enough. |
+| Ordered events | Events within an AND group must happen in order; OR separates alternative groups. |
+| Any-order events | All events within an AND group must happen, in any order; OR separates alternatives. |
+| Current conditions | Check each condition now, combining them with its individual AND/OR connection. |
 
-Existing combos keep their ordered/any-order behavior until you change the mode.
-In condition modes, an effect set to **gained** means currently active and **lost**
+For "poisoned OR health below 50%", choose **Current conditions** to check your
+current state rather than waiting for poison/health events.
+Existing combos keep their ordered/any-order behavior and default AND connections.
+Former combo-wide OR rules are automatically converted to individual OR connections.
+In current-condition mode, an effect set to **gained** means currently active and **lost**
 means currently absent. Health means currently below the threshold. Skill, item-use,
 and chat triggers count as recent events for the configured reset time. For example,
 an active Poison AND health below 20% works whichever became true first, and stops
@@ -95,8 +110,10 @@ are shared across its combo entries, but shared cooldowns between different item
 are not detected. After reloading the plugin, item readiness is unknown again.
 Mark ready only after checking the actual cooldown in-game.
 
-New exports use `CN2` to preserve trigger modes and item timer durations. Existing
-`CN1` exports can still be imported; `CN2` requires ComboNext 1.38 or later.
+New exports use `CN3` to preserve each trigger's AND/OR connection, trigger modes
+and item timer durations. Existing `CN1` and `CN2` exports can still be imported;
+older combo-wide OR modes are converted automatically. `CN3` requires ComboNext
+1.39 or later.
 
 ### Verification
 

@@ -295,9 +295,9 @@ local share = ComboNextShareWindow(ui.settings, function() end, function() ui.Re
 ui.settings.seqs[1].triggerMode = "anyConditions";
 share:Export(false);
 local exported = share.box:GetText();
-check(string.sub(exported, 1, 4) == "CN2!", "new share format is versioned");
+check(string.sub(exported, 1, 4) == "CN3!", "new share format is versioned");
 share:Import(true);
-check(ui.settings.seqs[1].triggerMode == "anyConditions", "share preserves current OR mode");
+check(ui.settings.seqs[1].triggerMode == "allConditions", "share migrates legacy current OR mode");
 check(ui.settings.seqs[1].finisher.itemCooldown == 5, "share preserves item duration");
 share.box:SetText("CN1!Legacy|1|E:SG:%23Wound:|I:potion:Health%20Potion");
 share:Import(true);
@@ -406,15 +406,15 @@ local modeMenu = controls[#controls];
 check(#modeMenu:GetItems() == 0, "last menu item has no child menu");
 local foundMode;
 for _, control in ipairs(controls) do
-    if (#control:GetItems() == 5) then
+    if (#control:GetItems() == 3) then
         foundMode = control;
     end
 end
-check(foundMode ~= nil, "editor exposes all five trigger modes");
+check(foundMode ~= nil, "editor exposes three modes without combo-wide OR choices");
 foundMode:GetItems()[3]:Click();
-check(ui.settings.seqs[1].triggerMode == "or", "editor changes combo to OR event mode");
+check(ui.settings.seqs[1].triggerMode == "allConditions", "editor selects current-condition evaluation");
 editor:InsertCell("T");
-check(ui.settings.seqs[1].triggerMode == "or", "editing the chain preserves chosen logic mode");
+check(ui.settings.seqs[1].triggerMode == "allConditions", "editing the chain preserves chosen logic mode");
 
 configure("or", { { itemName = "Health Potion"; shortcutType = 2; data = "potion" } });
 output = {};
@@ -440,6 +440,224 @@ for _, mode in ipairs({ "ordered", "any", "or", "allConditions", "anyConditions"
     editor:EnsureGroups();
     share:Export(false);
     share:Import(true);
-    check(ui.settings.seqs[1].triggerMode == mode, "share round trip: " .. mode);
+    check(ui.settings.seqs[1].triggerMode == logic.GetMode({ triggerMode = mode }),
+        "share round trip/migration: " .. mode);
 end
+
+local records = { effect("#Poison"), health("self", 50), effect("#Wound") };
+local rule;
+local function mixed(mode, joins)
+    configure(mode, records);
+    rule = ui.settings.seqs[1];
+    rule.triggerJoins = joins;
+end
+effectValues[1] = nil;
+player.morale = 30;
+mixed("allConditions", { [2] = "OR"; [3] = "AND" });
+tick();
+check(not ui.recommendations[1], "Poison OR (low health AND wound): low health alone is insufficient");
+check(string.find(ui.status:GetText(), " OR ", 1, true), "progress text preserves OR alternatives");
+effectValues[1] = { GetName = function() return "Poison"; end;
+    GetCategory = function() return 2; end; GetIcon = function() return 20; end };
+player.morale = 100;
+tick();
+check(ui.recommendations[1], "Poison OR (low health AND wound): poison alone is sufficient");
+effectValues[1] = nil;
+tick();
+effectValues[1] = { GetName = function() return "Wound"; end;
+    GetCategory = function() return 1; end; GetIcon = function() return 30; end };
+player.morale = 30;
+tick();
+check(ui.recommendations[1], "Poison OR (low health AND wound): second AND branch is sufficient");
+effectValues[1] = nil;
+tick();
+check(not ui.recommendations[1], "clearing wound invalidates low-health AND wound branch");
+
+mixed("allConditions", { [2] = "AND"; [3] = "OR" });
+effectValues[1] = { GetName = function() return "Poison"; end;
+    GetCategory = function() return 2; end; GetIcon = function() return 20; end };
+player.morale = 30;
+tick();
+check(ui.recommendations[1], "(Poison AND low health) OR wound: first AND branch is sufficient");
+effectValues[1] = nil;
+tick();
+check(not ui.recommendations[1], "AND before OR: low health alone still insufficient");
+effectValues[1] = { GetName = function() return "Wound"; end;
+    GetCategory = function() return 1; end; GetIcon = function() return 30; end };
+player.morale = 100;
+tick();
+check(ui.recommendations[1], "final OR wound trigger works independently");
+
+mixed("allConditions", nil);
+tick();
+check(not ui.recommendations[1], "AND remains default without connector settings");
+rule.triggerJoins = { [2] = "OR"; [3] = "OR" };
+tick();
+check(ui.recommendations[1], "per-trigger OR works without a combo-wide OR mode");
+for _, oldMode in ipairs({ "or", "anyConditions" }) do
+    local cfg = { triggerMode = oldMode; stepCount = 3 };
+    logic.NormalizeRule(cfg);
+    check(cfg.triggerMode == (oldMode == "or" and "ordered" or "allConditions")
+        and cfg.triggerJoins[2] == "OR" and cfg.triggerJoins[3] == "OR",
+        "legacy OR settings migrate all connectors: " .. oldMode);
+    logic.NormalizeRule(cfg);
+    check(cfg.triggerJoins[2] == "OR" and cfg.triggerJoins[3] == "OR",
+        "migration is idempotent: " .. oldMode);
+end
+share.box:SetText("CN2!OldOR|2:or|E:SG:%23Poison:,E:SG:%21hp%3C50:|I:potion:Health%20Potion:10");
+share:Import(true);
+check(ui.settings.seqs[1].triggerMode == "ordered"
+    and ui.settings.seqs[1].triggerJoins[2] == "OR", "CN2 event OR imports as per-trigger OR");
+share.box:SetText("CN2!OldConditions|2:anyConditions|E:SG:%23Poison:,E:SG:%21hp%3C50:|I:potion:Health%20Potion:10");
+share:Import(true);
+check(ui.settings.seqs[1].triggerMode == "allConditions"
+    and ui.settings.seqs[1].triggerJoins[2] == "OR", "CN2 current OR imports as per-trigger OR");
+
+for _, mode in ipairs({ "ordered", "any", "allConditions" }) do
+    mixed(mode, { [2] = "OR"; [3] = "AND" });
+    editor:EnsureGroups();
+    share:Export(false);
+    share:Import(true);
+    check(ui.settings.seqs[1].triggerJoins[2] == "OR"
+        and ui.settings.seqs[1].triggerJoins[3] == "AND"
+        and ui.settings.seqs[1].triggerMode == mode, "mixed connector sharing: " .. mode);
+end
+for _, token in ipairs({ "3:allConditions:O", "3:allConditions:OOO",
+    "3:allConditions:OX", "3:or:OO", "9:ordered:AAAAAAAA" }) do
+    local previous = ui.settings.seqs;
+    share.box:SetText("CN3!Bad|" .. token .. "|E:SG:%23Poison:|I:potion:Health%20Potion");
+    share:Import(true);
+    check(ui.settings.seqs == previous, "invalid connector metadata rejects import: " .. token);
+end
+local previousRules = ui.settings.seqs;
+share.box:SetText("CN3!BadTrigger|2:allConditions:A|E:SG:%23Poison:,X:invalid|I:potion:Health%20Potion");
+share:Import(true);
+check(ui.settings.seqs == previousRules, "invalid imported AND trigger cannot silently weaken a rule");
+
+local function runEvents(mode, joins, names)
+    configure(mode, { { skillName = "Attack" }, { skillName = "B" }, { skillName = "C" } });
+    ui.settings.seqs[1].triggerJoins = joins;
+    for _, name in ipairs(names) do
+        now = now + 1;
+        chat(name);
+    end
+end
+runEvents("ordered", { [2] = "OR" }, { "Attack" });
+check(ui.recommendations[1], "event A OR (B AND C) completes on A");
+runEvents("ordered", { [2] = "OR" }, { "B" });
+check(not ui.recommendations[1], "event B alone does not complete B AND C branch");
+now = now + 1;
+chat("C");
+check(ui.recommendations[1], "event B then C completes second branch");
+runEvents("ordered", { [2] = "OR" }, { "C", "B" });
+check(not ui.recommendations[1], "ordered AND branch retains order");
+runEvents("any", { [2] = "OR" }, { "C", "B" });
+check(ui.recommendations[1], "any-order AND branch accepts C then B");
+runEvents("ordered", { [3] = "OR" }, { "C" });
+check(ui.recommendations[1], "(A AND B) OR C completes on C");
+
+configure("ordered", { effect("#Wound"), effect("Raid Wound"), effect("#Poison") });
+ui.settings.seqs[1].triggerJoins = { [3] = "OR" };
+effectValues[1] = { GetName = function() return "Raid Wound"; end;
+    GetCategory = function() return 1; end; GetIcon = function() return 10; end };
+effects:EffectAdded({ Index = 1 });
+check(ui.states[1].progress == 1 and not ui.recommendations[1],
+    "one effect cannot satisfy two AND events inside an OR expression");
+effects:EffectAdded({ Index = 1 });
+check(ui.recommendations[1], "second physical event completes an AND group inside OR expression");
+
+mixed("allConditions", { [2] = "AND"; [3] = "AND" });
+editor:EnsureGroups();
+editor:SelectSlot(1, 2);
+check(editor.triggerJoinButton:IsVisible()
+    and editor.triggerJoinButton:GetText():find("AND", 1, true), "selected trigger defaults to AND");
+editor.triggerJoinButton:Click();
+check(ui.settings.seqs[1].triggerJoins[2] == "OR", "selected connector toggles to OR");
+check(ui.settings.seqs[1].triggerJoins[3] == "AND", "connector edit changes only the selected trigger");
+check(editor.slots[2].joinButton:GetText() == "OR", "slot shows individual OR connector");
+editor.slots[3].joinButton:Click();
+check(ui.settings.seqs[1].triggerJoins[3] == "OR", "slot connector toggles individually");
+editor:SelectSlot(1, 1);
+check(not editor.triggerJoinButton:IsVisible()
+    and not editor.slots[1].joinButton:IsVisible(), "first trigger has no preceding connector");
+editor:SelectSlot(1, editor.finisherSlot);
+check(not editor.triggerJoinButton:IsVisible(), "finisher is not an AND/OR trigger");
+editor:SelectSlot(1, 2);
+editor:MoveCellTo(2, 3);
+check(ui.settings.seqs[1].triggerJoins[2] == "OR"
+    and ui.settings.seqs[1].triggerJoins[3] == "OR", "moving trigger preserves its connector");
+editor:InsertCell("F");
+for _, cfg in ipairs(ui.settings.seqs) do
+    check(not cfg.triggerJoins[1], "new rule never inherits a connector on its first trigger");
+end
+for joinBits = 0, 15 do
+    for values = 0, 31 do
+        local inputs = {};
+        local groupTrue, expected = true, false;
+        for index = 1, 5 do
+            local satisfied = math.floor(values / 2 ^ (index - 1)) % 2 == 1;
+            local isOr = index > 1 and math.floor(joinBits / 2 ^ (index - 2)) % 2 == 1;
+            if (isOr) then
+                expected = expected or groupTrue;
+                groupTrue = true;
+            end
+            groupTrue = groupTrue and satisfied;
+            inputs[index] = { name = tostring(index); join = isOr and "OR" or "AND" };
+        end
+        expected = expected or groupTrue;
+        inputs.mode = "allConditions";
+        local testState = {};
+        logic.EvaluateConditions(testState, inputs, function(_, index)
+            return math.floor(values / 2 ^ (index - 1)) % 2 == 1;
+        end);
+        check(testState.done == expected, "AND/OR truth table " .. joinBits .. "/" .. values);
+    end
+end
+local unknownState = {};
+logic.EvaluateConditions(unknownState, {
+    { name = "Unknown" }, { name = "True"; join = "OR" }, mode = "allConditions"
+}, function(_, index) return index == 2 and true or nil; end);
+check(unknownState.done, "known true OR alternative works with an unknown condition");
+local unknownAnd = {};
+logic.EvaluateConditions(unknownAnd, {
+    { name = "Unknown" }, { name = "True"; join = "AND" }, mode = "allConditions"
+}, function(_, index) return index == 2 and true or nil; end);
+check(not unknownAnd.done, "unknown AND condition does not satisfy a branch");
+
+configure("allConditions", { health("self", 50), effect("#Poison") });
+ui.settings.seqs[1].triggerJoins = { [2] = "OR" };
+player.morale = 80;
+effectValues[1] = { GetName = function() return "Poison"; end;
+    GetCategory = function() return 2; end; GetIcon = function() return 20; end };
+tick();
+check(ui.recommendations[1], "user example: poisoned OR under 50 percent, poison only");
+effectValues[1] = nil;
+player.morale = 30;
+tick();
+check(ui.recommendations[1], "user example: poisoned OR under 50 percent, health only");
+player.morale = 80;
+tick();
+check(not ui.recommendations[1], "user example: neither condition hides recommendation");
+
+configure("allConditions", { health("self", 50), effect("#Poison") });
+ui.settings.seqs[2] = {
+    name = "Other branch"; groupId = ui.settings.seqs[1].groupId;
+    skills = { effect("#Wound"), health("self", 20) }; stepCount = 2;
+    triggerMode = "allConditions"; triggerJoins = { [2] = "OR" };
+    finisher = { skillName = "Attack"; shortcutType = 1; data = "attack" };
+};
+ui.ResetProgress();
+editor:EnsureGroups();
+editor:SelectSlot(1, 2);
+editor.triggerJoinButton:Click();
+check(ui.settings.seqs[1].triggerJoins[2] == "OR"
+    and ui.settings.seqs[2].triggerJoins[2] == "OR", "connector edit preserves other rule's joins");
+editor:SelectSlot(2, 2);
+editor.triggerJoinButton:Click();
+check(ui.settings.seqs[1].triggerJoins[2] == "OR"
+    and ui.settings.seqs[2].triggerJoins[2] == "AND", "connectors are individual to each trigger rule");
+output = {};
+command:Execute("cn", "verify");
+check(not table.concat(output, "\n"):find("VERIFY FAIL", 1, true),
+    "mixed connector rules pass configuration verification");
 print(tostring(count) .. " ComboNext assertions passed.");
