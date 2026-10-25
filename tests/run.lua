@@ -295,7 +295,7 @@ local share = ComboNextShareWindow(ui.settings, function() end, function() ui.Re
 ui.settings.seqs[1].triggerMode = "anyConditions";
 share:Export(false);
 local exported = share.box:GetText();
-check(string.sub(exported, 1, 4) == "CN4!", "new share format is versioned");
+check(string.sub(exported, 1, 4) == "CN5!", "new share format is versioned");
 share:Import(true);
 check(ui.settings.seqs[1].triggerMode == "allConditions", "share migrates legacy current OR mode");
 check(ui.settings.seqs[1].finisher.itemCooldown == 5, "share preserves item duration");
@@ -889,7 +889,7 @@ for _, className in ipairs({ "Hunter", "Champion", "Beorning", "RuneKeeper", "Ma
         configure("allConditions", { record });
         editor:EnsureGroups();
         share:Export(false);
-        check(share.box:GetText():sub(1, 4) == "CN4!", "class record uses CN4 sharing");
+        check(share.box:GetText():sub(1, 4) == "CN5!", "class record uses CN5 sharing");
         share:Import(true);
         local imported = ui.settings.seqs[1].skills[1];
         check(imported.classTrigger == record.classTrigger and imported.classCompare == record.classCompare
@@ -969,4 +969,254 @@ ui.settings.alwaysFirstFinisher = true;
 tick();
 check(not ui.recommendations[1], "invalid class trigger cannot become a starter recommendation");
 ui.settings.alwaysFirstFinisher = false;
+local function priorityRule(priority, group, name, conditions)
+    return { name = "Combo " .. tostring(group); groupId = group; priority = priority;
+        skills = conditions or { health("self", 50) };
+        stepCount = conditions and #conditions or 1; triggerMode = "allConditions";
+        finisher = { skillName = name; shortcutType = 1; data = name } };
+end
+local function prioritySetup(rules, showAll)
+    ui.settings.seqs = rules;
+    ui.settings.alwaysFirstFinisher = false;
+    ui.settings.readyOnly = false;
+    ui.settings.showAllFinishers = showAll ~= false;
+    ui.settings.finisherSlots = showAll == false and 1 or 9;
+    ui.RelayoutFinishers();
+    player.morale = 30;
+    editor.comboIndex = 1;
+    editor:Refresh();
+    ui.ResetProgress();
+    tick();
+end
+local ranked = { priorityRule(nil, 10, "None first") };
+for level = 9, 1, -1 do
+    ranked[#ranked + 1] = priorityRule(level, level, "Level " .. level);
+end
+ranked[#ranked + 1] = priorityRule(nil, 11, "None last");
+local order = logic.OrderRules(ranked);
+for position = 1, 9 do
+    check(order[position] == 11 - position, "ascending priority order level " .. position);
+end
+check(order[10] == 1 and order[11] == 11, "no priority follows all levels and preserves list order");
+prioritySetup(ranked);
+check(ui.visibleRecommendation == 10 and ui.active == 10, "highest priority wins active and displayed combo");
+for slot = 1, 9 do
+    check(ui.finisherChoices[slot].icon:GetShortcut():GetData() == "Level " .. slot,
+        "visible finishers follow priority level " .. slot);
+end
+prioritySetup({
+    priorityRule(1, 100, "Older", { health("self", 50) }),
+    priorityRule(1, 1, "Newer", { health("self", 50), health("self", 75) }),
+    priorityRule(9, 2, "Low"),
+    priorityRule(nil, 3, "Unassigned"),
+});
+check(ui.active == 1 and ui.visibleRecommendation == 1,
+    "equal priority chooses list order, not group ID or longer matched combo");
+check(ui.finisherChoices[2].icon:GetShortcut():GetData() == "Newer",
+    "stacked priority keeps both recommendations in list order");
+prioritySetup({
+    priorityRule(nil, 1, "First none"),
+    priorityRule(nil, 2, "Second none"),
+});
+check(ui.visibleRecommendation == 1 and ui.active == 1, "default no-priority combos keep list order");
+prioritySetup({
+    priorityRule(9, 1, "Old low"),
+    priorityRule(1, 2, "New high"),
+}, false);
+check(ui.visibleRecommendation == 2 and ui.finisherChoices[1].icon:GetShortcut():GetData() == "New high",
+    "single-finisher mode honors priority");
+ui.settings.seqs[2].skills = { health("self", 20) };
+tick();
+check(ui.visibleRecommendation == 1, "inactive high priority does not block lower active combo");
+prioritySetup({
+    priorityRule(9, 1, "Finished low"),
+    priorityRule(1, 2, "Unfinished high", { health("self", 50), health("self", 20) }),
+});
+check(ui.visibleRecommendation == 1 and ui.active == 1,
+    "in-progress high-priority combo cannot displace completed lower-priority combo");
+prioritySetup({
+    priorityRule(9, 1, "Active low"),
+    priorityRule(1, 2, "Starter high"),
+});
+ui.settings.seqs[2].skills = {};
+ui.settings.seqs[2].starter = true;
+ui.settings.alwaysFirstFinisher = true;
+ui.ResetProgress();
+tick();
+check(ui.visibleRecommendation == 2, "always-offered starter follows its combo priority");
+ui.settings.seqs[2].priority = nil;
+tick();
+check(ui.visibleRecommendation == 1, "no-priority starter does not bypass assigned priority");
+
+prioritySetup({
+    priorityRule(9, 1, "Heal"),
+    priorityRule(1, 2, "Attack"),
+}, false);
+ui.settings.readyOnly = true;
+attack.reset = now + 30;
+heal.reset = -1;
+tick();
+check(ui.visibleRecommendation == 1, "ready-only skips higher-priority cooldown");
+attack.reset = -1;
+tick();
+check(ui.visibleRecommendation == 2, "ready higher-priority finisher retakes first position");
+attack.usable = false;
+tick();
+check(ui.visibleRecommendation == 1, "ready-only skips unusable higher-priority skill");
+ui.settings.readyOnly = false;
+tick();
+check(ui.visibleRecommendation == 2, "show-on-cooldown preserves priority even when unavailable");
+attack.usable = true;
+
+prioritySetup({
+    priorityRule(9, 1, "Duplicate"),
+    priorityRule(1, 2, "Unique"),
+    priorityRule(1, 3, "Duplicate"),
+});
+check(ui.visibleRecommendation == 2
+    and ui.finisherChoices[2].icon:GetShortcut():GetData() == "Duplicate"
+    and not ui.finisherChoices[3].icon:IsVisible(),
+    "deduplication uses priority order, not first occurrence of skill name");
+prioritySetup({
+    priorityRule(nil, 1, "Earlier group first"),
+    priorityRule(9, 1, "Earlier group second"),
+    priorityRule(1, 2, "Higher group"),
+});
+editor:EnsureGroups();
+check(ui.settings.seqs[2].priority == nil, "combo's first rule owns shared priority including none");
+ui.settings.seqs[1].priority = 1;
+editor:EnsureGroups();
+check(ui.settings.seqs[2].priority == 1, "priority propagates to every rule in the combo");
+ui.ResetProgress();
+tick();
+check(ui.finisherChoices[1].icon:GetShortcut():GetData() == "Earlier group first"
+    and ui.finisherChoices[2].icon:GetShortcut():GetData() == "Earlier group second"
+    and ui.finisherChoices[3].icon:GetShortcut():GetData() == "Higher group",
+    "same-priority combo rules retain combo and finisher list order");
+
+local function priorityMenu()
+    local first = #controls + 1;
+    editor.priorityButton:Click();
+    for index = first, #controls do
+        if (#controls[index]:GetItems() == 10) then
+            return controls[index]:GetItems();
+        end
+    end
+    error("priority selector menu not found");
+end
+prioritySetup({
+    priorityRule(nil, 1, "Old one"),
+    priorityRule(nil, 1, "Old two"),
+    priorityRule(nil, 2, "New"),
+}, false);
+editor:SelectSlot(3, 1);
+check(editor.priorityButton:GetText() == "Prio: None v", "editor starts with no priority");
+local menu = priorityMenu();
+check(menu[1]:GetText():find("No priority", 1, true)
+    and menu[2]:GetText():find("highest", 1, true)
+    and menu[10]:GetText():find("lowest", 1, true), "priority menu has none and levels 1-9");
+local saveBefore, savedPriority = Turbine.PluginData.Save, nil;
+Turbine.PluginData.Save = function(_, _, value)
+    savedPriority = value.seqs["__CN_KEY__:3"].priority;
+end;
+menu[2]:Click();
+Turbine.PluginData.Save = saveBefore;
+check(savedPriority == "__CN_NUMBER__:1", "priority saved through locale-stable settings encoding");
+check(ui.settings.seqs[3].priority == 1 and ui.settings.seqs[1].priority == nil,
+    "priority selector changes only selected combo");
+check(ui.visibleRecommendation == 3 and ui.active == 3 and ui.recommendations[1],
+    "editing priority immediately reorders without clearing matched combos");
+check(editor.priorityButton:GetText() == "Prio: 1 v", "editor displays selected priority");
+editor:SelectSlot(1, 1);
+priorityMenu()[2]:Click();
+check(ui.settings.seqs[1].priority == 1 and ui.settings.seqs[2].priority == 1
+    and ui.visibleRecommendation == 1, "stacking priority uses first combo and updates all its rules");
+for level = 1, 9 do
+    priorityMenu()[level + 1]:Click();
+    check(ui.settings.seqs[1].priority == level and ui.settings.seqs[2].priority == level,
+        "selector sets shared priority level " .. level);
+end
+priorityMenu()[1]:Click();
+check(ui.settings.seqs[1].priority == nil and ui.settings.seqs[2].priority == nil
+    and ui.visibleRecommendation == 3, "none selection clears priority for whole combo");
+priorityMenu()[4]:Click();
+local _, currentCombo = editor:GetComboPosition();
+local chain = editor:GetChain(currentCombo);
+editor:ApplyChain(currentCombo, chain, 1);
+check(ui.settings.seqs[1].priority == 3 and ui.settings.seqs[2].priority == 3,
+    "chain rebuild preserves combo priority");
+editor:ResetCombo();
+check(ui.settings.seqs[1].priority == 3, "clearing combo content preserves its priority");
+editor:CreateCombo();
+check(ui.settings.seqs[editor.comboIndex].priority == nil, "new combo does not inherit selected priority");
+ui.settings.seqs = {};
+ui.ResetProgress();
+editor:Refresh();
+check(editor.priorityButton.enabled == false, "priority selector disabled without a combo");
+
+for level = 0, 9 do
+    local priority = level > 0 and level or nil;
+    prioritySetup({
+        priorityRule(priority, 1, "Shared first"),
+        priorityRule(priority, 1, "Shared second"),
+        priorityRule(1, 2, "Other combo"),
+    });
+    -- Item finishers avoid requiring the mock catalog to resolve custom skill IDs.
+    for index, cfg in ipairs(ui.settings.seqs) do
+        cfg.finisher = { shortcutType = 2; data = "potion" .. index; itemName = cfg.name; skillName = cfg.name };
+    end
+    editor:SelectSlot(1, 1);
+    share:Export(false);
+    local text = share.box:GetText();
+    check(text:sub(1, 4) == "CN5!" and text:find("|P" .. level .. "|", 1, true),
+        "CN5 explicitly encodes priority including none " .. level);
+    share:Import(true);
+    check(ui.settings.seqs[1].priority == priority and ui.settings.seqs[2].priority == priority
+        and ui.settings.seqs[3].priority == 1, "priority share round-trip " .. level);
+    check(ui.settings.seqs[1].groupId == ui.settings.seqs[2].groupId
+        and ui.settings.seqs[1].groupId ~= ui.settings.seqs[3].groupId,
+        "priority sharing preserves combo grouping " .. level);
+    share.box:SetText(text);
+    share:Import(false);
+    check(#ui.settings.seqs == 6 and ui.settings.seqs[4].priority == priority
+        and ui.settings.seqs[6].priority == 1, "append import preserves priorities " .. level);
+    local sorted = logic.OrderRules(ui.settings.seqs);
+    if (level == 1) then
+        check(sorted[1] == 1 and sorted[2] == 2 and sorted[3] == 3 and sorted[4] == 4,
+            "equal imported priorities put existing combos first");
+    end
+    share:Undo();
+    check(#ui.settings.seqs == 3 and ui.settings.seqs[1].priority == priority,
+        "undo import restores priority data " .. level);
+end
+for _, invalid in ipairs({ "P10", "P-1", "P1.5", "P", "Pnone", "P01", "X1" }) do
+    local previous = ui.settings.seqs;
+    share.box:SetText("CN5!Bad|" .. invalid .. "|1:allConditions:|C:focus:ge:3|I:potion:Potion");
+    share:Import(true);
+    check(ui.settings.seqs == previous, "invalid shared priority rejected atomically " .. invalid);
+end
+local previousPriorityRules = ui.settings.seqs;
+share.box:SetText("CN5!Valid|P1|1:allConditions:|C:focus:ge:3|I:potion:Potion"
+    .. "!Invalid|P10|1:allConditions:|C:focus:ge:3|I:potion:Potion");
+share:Import(true);
+check(ui.settings.seqs == previousPriorityRules, "invalid priority in a later combo rejects entire import");
+for _, header in ipairs({ "CN1", "CN2", "CN3", "CN4" }) do
+    local metadata = header == "CN1" and "1" or header == "CN2" and "1:ordered" or "1:ordered:";
+    share.box:SetText(header .. "!Legacy|" .. metadata .. "|E:SG:%23Poison:|I:potion:Potion");
+    share:Import(true);
+    check(ui.settings.seqs[1].priority == nil and ui.settings.seqs[1].name == "Legacy",
+        "older shares import with no priority " .. header);
+end
+for _, invalid in ipairs({ 0, 10, -1, 1.5, "1", false }) do
+    prioritySetup({ priorityRule(invalid, 1, "Heal") });
+    output = {};
+    command:Execute("cn", "verify");
+    check(table.concat(output, "\n"):find("has invalid priority", 1, true),
+        "verification reports invalid priority " .. tostring(invalid));
+end
+prioritySetup({ priorityRule(1, 1, "Heal"), priorityRule(9, 2, "Attack") });
+output = {};
+command:Execute("cn", "verify");
+check(not table.concat(output, "\n"):find("VERIFY FAIL", 1, true),
+    "valid priorities pass configuration verification");
 print(tostring(count) .. " ComboNext assertions passed.");

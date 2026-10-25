@@ -14,13 +14,16 @@ Today's intermediate version labels are consolidated below; Git history is uncha
 
 ## [1.4] - 2026-10-25
 
+- Added combo-wide priority selection in the editor: 1 highest through 9 lowest, with no priority as the default after level 9. Multiple combos can share a level; ties keep combo-list order and each combo's finisher order.
+- Priorities order single- and multi-finisher recommendations without clearing matched progress or bypassing readiness filtering. Priority survives chain editing and is saved for every rule in the combo.
 - Added class resource/state triggers at the start of each corresponding class's catalog, separate from Effects: Hunter Focus/stances, Champion Fervour, Beorning Wrath/bear form, Rune-keeper attunement/charged state, Mariner raw balance, Brawler Mettle, Guardian Fortification, Warden Advanced Technique/gambit slots/stances, and Minstrel stances.
 - Selected class triggers have comparison/value controls in the editor, support individual AND/OR connections, and work in current-condition and event modes. They cannot be finishers.
 - Class notifications update immediately where available, with a half-second polling fallback. Event comparisons re-arm after becoming false; simultaneous thresholds are batched.
 - Unsupported class APIs, wrong-class readings, unconfirmed stances, and unverified effect languages remain unknown, with progress details and honest verification coverage. Stances require explicit selection after loading or a detected trait/skill-list change.
 - Mettle effect names support English/German/French. Fortification and Advanced Technique currently use verified English names only. Other localized effect triggers remain unchanged.
-- CN4 sharing preserves class conditions and rejects malformed class records; CN1/CN2/CN3 imports remain supported.
+- CN5 sharing preserves combo priorities and class conditions and rejects malformed priorities/class records; CN1/CN2/CN3/CN4 imports remain supported and default to no priority.
 - Expanded mocked-API regressions for class readers, boundaries, event re-arming, editor configuration, AND/OR integration, sharing, and verification.
+- Added priority regressions for all nine levels, no-priority defaults, tied and grouped finishers, readiness, immediate editor updates, persistence, share imports/exports, and import undo.
 
 - Individual AND/OR connections between triggers replace combo-wide OR modes. AND is the default and binds before OR; clickable slot labels and a selected-trigger button change each connection.
 - Ordered events, any-order events and current-condition modes respect the per-trigger connections. Previous combo-wide OR rules migrate automatically without changing their meaning.

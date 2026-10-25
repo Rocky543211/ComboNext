@@ -13,6 +13,7 @@ ComboNext is a player-created combo advisor for **The Lord of the Rings Online**
 - Share combo configurations by exporting text to copy or importing text from another player.
 - Customize the advisor's opacity, scale, colors, reset timer, and finisher display.
 - Optionally hide finishers until ready, using skill cooldowns and player-configured item timers.
+- Assign combo priorities from 1 (highest) to 9 (lowest), with equal priorities allowed.
 - Use the English, German, or French interface.
 
 ## Install
@@ -91,6 +92,26 @@ per event-based rule. In condition modes, both can be true simultaneously.
 rule does not automatically exclude those wounds from the generic rule. Do not
 configure a generic potion rule where that would be unsafe.
 
+### Combo priority
+
+In **EDIT**, choose a combo and click **Prio: None** beside **CLEAR ALL**. Select
+**Priority 1** (highest) through **Priority 9** (lowest), or **No priority** (the
+default). The setting applies to the whole combo, including all of its finisher
+rules, and is saved immediately. The combo chooser marks assigned priorities
+with `(P1)` through `(P9)`.
+
+When several combos qualify, recommendations appear in priority order:
+**1, 2, ... 9, then no priority**. Multiple combos can share the same priority.
+Ties use the combo list's order (normally the older combo first), with each
+combo's finishers keeping their own order. Priority does not rearrange the combo
+list itself and does not let an unmet combo block one that qualifies.
+
+This applies whether you display one finisher or several. Ready-only mode still
+skips unavailable or unknown finishers, so a lower-priority ready finisher can
+appear before a higher-priority one on cooldown. With show-on-cooldown enabled,
+the higher-priority recommendation stays first. Changing priority does not clear
+matched progress. New combos and imports from older share formats have no priority.
+
 ### Finisher readiness
 
 In **OPTIONS**, choose **ready only** or **show even on cooldown**. The default
@@ -167,11 +188,13 @@ coverage, not live validation for every class.
 
 ### Sharing compatibility
 
-New exports use `CN4` to preserve class conditions as well as each trigger's
+New exports use `CN5` to preserve combo priorities and class conditions as well as each trigger's
 AND/OR connection, trigger modes, and item timer durations. Existing `CN1`, `CN2`,
-and `CN3` exports can still be imported; older combo-wide OR modes are converted
-automatically. `CN4` is supported by ComboNext 1.4 (2026-10-25) and subsequent releases. Invalid class conditions
-reject an import rather than silently weakening its trigger requirements.
+`CN3`, and `CN4` exports can still be imported; they default to no priority, and
+older combo-wide OR modes are converted automatically. `CN5` requires the updated
+ComboNext 1.4 with priority support (2026-10-25) or a subsequent release.
+Invalid priorities or class conditions reject an import rather than silently
+changing its ordering or weakening its trigger requirements.
 
 ### Verification
 

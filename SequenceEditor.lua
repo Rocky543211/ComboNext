@@ -95,6 +95,10 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
             local name = type(sequence.name) == "string" and sequence.name ~= ""
                 and sequence.name or L("editor.comboDefault", comboPosition);
             local label = comboPosition .. ". " .. name;
+            local priority = ComboNextLogic.GetPriority(sequence);
+            if (priority) then
+                label = label .. " " .. L("editor.priorityTag", priority);
+            end
             if (#combo.rules > 1) then
                 label = label .. " " .. L("editor.rulesTag", #combo.rules);
             end
@@ -584,10 +588,46 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
     self.resetComboButton = Turbine.UI.Lotro.Button();
     self.resetComboButton:SetParent(self);
     self.resetComboButton:SetPosition(16, 560);
-    self.resetComboButton:SetSize(202, 26);
+    self.resetComboButton:SetSize(98, 26);
     self.resetComboButton:SetText(L("editor.clearAll"));
     self.resetComboButton.Click = function()
         self:ResetCombo();
+    end;
+    self.priorityButton = Turbine.UI.Lotro.Button();
+    self.priorityButton:SetParent(self);
+    self.priorityButton:SetPosition(120, 560);
+    self.priorityButton:SetSize(98, 26);
+    self.priorityButton.Click = function()
+        local _, combo = self:GetComboPosition();
+        if (not combo) then
+            return;
+        end
+        local menu = Turbine.UI.ContextMenu();
+        local current = ComboNextLogic.GetPriority(self.settings.seqs[combo.rules[1]]);
+        for level = 0, 9 do
+            local priority = level > 0 and level or nil;
+            local label = level == 0 and L("editor.priorityNone")
+                or L("editor.priorityLevel", level);
+            if (level == 1) then
+                label = L("editor.priorityHighest");
+            elseif (level == 9) then
+                label = L("editor.priorityLowest");
+            end
+            local item = Turbine.UI.MenuItem((current == priority and "> " or "") .. label);
+            item.Click = function()
+                for _, index in ipairs(combo.rules) do
+                    self.settings.seqs[index].priority = priority;
+                end
+                self.save();
+                self:Refresh();
+                if (self.displayChanged) then
+                    self.displayChanged();
+                end
+                self.status:SetText(L("editor.priorityHint"));
+            end;
+            menu:GetItems():Add(item);
+        end
+        menu:ShowMenu();
     end;
     self.effectScope = "self";
     self.effectEvent = "gained";
@@ -779,6 +819,7 @@ function ComboNextSequenceEditor:EnsureGroups()
             sequence.groupId = maxId;
         end
     end
+    ComboNextLogic.NormalizePriorities(self.settings.seqs);
 end
 
 function ComboNextSequenceEditor:NextGroupId()
@@ -890,6 +931,7 @@ function ComboNextSequenceEditor:ApplyChain(combo, chain, selectPosition)
             open = open or nil;
             name = template.name;
             groupId = template.groupId;
+            priority = template.priority;
             skills = current.skills;
             triggerJoins = current.joins;
             stepCount = math.max(1, current.count);
@@ -1283,6 +1325,10 @@ function ComboNextSequenceEditor:Refresh()
     self.nameBox:SetText(sequence and sequence.name or "");
     self.clearButton:SetEnabled(sequence ~= nil);
     self.resetComboButton:SetEnabled(sequence ~= nil);
+    self.priorityButton:SetEnabled(sequence ~= nil);
+    local priority = sequence and ComboNextLogic.GetPriority(sequence);
+    self.priorityButton:SetText(L("editor.priorityButton",
+        priority and tostring(priority) or L("editor.priorityNoneShort")));
     self.captureButton:SetEnabled(sequence ~= nil and self.selectedSlot <= self.maxSteps);
     self.useCaptureButton:SetEnabled(sequence ~= nil and self.selectedSlot <= self.maxSteps);
     self.addPairButton:SetEnabled(sequence ~= nil);

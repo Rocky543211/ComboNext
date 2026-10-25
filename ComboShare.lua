@@ -7,7 +7,7 @@ import "ComboNext.ClassTriggers";
 import "ComboNext.Localization";
 
 local L = ComboNextL;
-local HEADER = "CN4";
+local HEADER = "CN5";
 local MAX_IMPORT_COMBOS = 60;
 
 local function Escape(text)
@@ -73,7 +73,7 @@ local function EncodeCombo(rules, index, findSkill)
     if (rules[1].name == L("editor.comboDefault", index)) then
         name = "";
     end
-    local fields = { name };
+    local fields = { name, "P" .. tostring(ComboNextLogic.GetPriority(rules[1]) or 0) };
     for _, cfg in ipairs(rules) do
         local tokens = {};
         local joins = {};
@@ -92,7 +92,7 @@ local function EncodeCombo(rules, index, findSkill)
             fields[#fields + 1] = finisher;
         end
     end
-    if (#fields == 1) then
+    if (#fields == 2) then
         return nil;
     end
     return table.concat(fields, "|");
@@ -278,7 +278,8 @@ end
 function ComboNextShareWindow:Import(replace)
     local text = string.gsub(self.box:GetText() or "", "%s+", "");
     local parts = Split(text, "!");
-    local withJoins = parts[1] == HEADER or parts[1] == "CN3";
+    local withClass = parts[1] == HEADER or parts[1] == "CN4";
+    local withJoins = withClass or parts[1] == "CN3";
     if ((not withJoins and parts[1] ~= "CN2" and parts[1] ~= "CN1") or #parts < 2) then
         self.status:SetText(L("share.invalid"));
         return;
@@ -288,12 +289,23 @@ function ComboNextShareWindow:Import(replace)
     for index = 2, math.min(#parts, MAX_IMPORT_COMBOS + 1) do
         local fields = Split(parts[index], "|");
         local maxSteps = ComboNextConstants.maxSteps;
+        local priority, firstRuleField = nil, 2;
+        if (parts[1] == HEADER) then
+            local text = string.match(fields[2] or "", "^P([0-9])$");
+            if (not text or #fields < 5 or (#fields - 2) % 3 ~= 0) then
+                self.status:SetText(L("share.invalid"));
+                return;
+            end
+            priority = tonumber(text);
+            priority = priority > 0 and priority or nil;
+            firstRuleField = 3;
+        end
         local comboName = string.sub(Unescape(fields[1] or ""), 1, 24);
         if (comboName == "") then
             comboName = L("editor.comboDefault", groupCount + 1);
         end
         local groupRules = {};
-        for base = 2, #fields, 3 do
+        for base = firstRuleField, #fields, 3 do
             local stepText, mode, joins;
             if (withJoins or parts[1] == "CN2") then
                 if (withJoins) then
@@ -315,6 +327,7 @@ function ComboNextShareWindow:Import(replace)
             local steps = math.max(1, math.min(maxSteps, math.floor(tonumber(stepText) or 1)));
             local cfg = {
                 name = comboName;
+                priority = priority;
                 skills = {};
                 stepCount = steps;
                 triggerMode = mode;
@@ -332,7 +345,7 @@ function ComboNextShareWindow:Import(replace)
             local last = 0;
             for step = 1, math.min(steps, #tokens) do
                 local record = self:DecodeRecord(tokens[step]);
-                if (record and record.classTrigger and parts[1] ~= HEADER) then
+                if (record and record.classTrigger and not withClass) then
                     self.status:SetText(L("share.invalid"));
                     return;
                 end

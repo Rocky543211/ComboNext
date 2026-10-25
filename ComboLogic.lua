@@ -1,5 +1,56 @@
 ComboNextLogic = {};
 
+function ComboNextLogic.GetPriority(cfg)
+    local priority = cfg.priority;
+    if (type(priority) == "number" and priority >= 1 and priority <= 9
+        and priority % 1 == 0) then
+        return priority;
+    end
+    return nil;
+end
+
+-- A combo's first rule owns the priority; all of its finisher rules share it.
+function ComboNextLogic.NormalizePriorities(seqs)
+    local firstByGroup = {};
+    for _, cfg in ipairs(seqs) do
+        if (cfg.groupId ~= nil) then
+            local first = firstByGroup[cfg.groupId];
+            if (first) then
+                cfg.priority = first.priority;
+            else
+                firstByGroup[cfg.groupId] = cfg;
+            end
+        end
+    end
+end
+
+function ComboNextLogic.OrderRules(seqs)
+    local order, firstByGroup, positions = {}, {}, {};
+    for index, cfg in ipairs(seqs) do
+        order[index] = index;
+        local first = cfg.groupId ~= nil and firstByGroup[cfg.groupId] or nil;
+        if (not first) then
+            first = index;
+            if (cfg.groupId ~= nil) then
+                firstByGroup[cfg.groupId] = first;
+            end
+        end
+        positions[index] = first;
+    end
+    table.sort(order, function(a, b)
+        local firstA, firstB = positions[a], positions[b];
+        local priorityA = ComboNextLogic.GetPriority(seqs[firstA]) or 10;
+        local priorityB = ComboNextLogic.GetPriority(seqs[firstB]) or 10;
+        if (priorityA ~= priorityB) then
+            return priorityA < priorityB;
+        elseif (firstA ~= firstB) then
+            return firstA < firstB;
+        end
+        return a < b;
+    end);
+    return order;
+end
+
 function ComboNextLogic.GetMode(cfg)
     local mode = cfg.triggerMode or (cfg.anyOrder and "any" or "ordered");
     if (mode == "or") then

@@ -263,6 +263,7 @@ do
     end
 end
 local validResetSeconds = {};
+ComboNextLogic.NormalizePriorities(settings.seqs);
 for _, seconds in ipairs(ComboNextConstants.resetOptions) do
     validResetSeconds[seconds] = true;
 end
@@ -1306,14 +1307,11 @@ end
 function ui.UpdateDisplay()
     local warning;
     local primaryRecommendation;
-    if (ui.active and ui.recommendations[ui.active]) then
-        primaryRecommendation = ui.active;
-    else
-        for comboIndex = 1, #settings.seqs do
-            if (ui.recommendations[comboIndex]) then
-                primaryRecommendation = comboIndex;
-                break;
-            end
+    local orderedRules = ComboNextLogic.OrderRules(settings.seqs);
+    for _, comboIndex in ipairs(orderedRules) do
+        if (ui.recommendations[comboIndex] or IsStarterRule(comboIndex)) then
+            primaryRecommendation = comboIndex;
+            break;
         end
     end
     local matchedRecommendationCount = 0;
@@ -1345,12 +1343,8 @@ function ui.UpdateDisplay()
             finisherRecommendations[#finisherRecommendations + 1] = comboIndex;
         end
     end
-    if (not settings.showAllFinishers and primaryRecommendation) then
-        AddRecommendation(primaryRecommendation);
-    end
-    for comboIndex = 1, #settings.seqs do
-        if ((ui.recommendations[comboIndex] or IsStarterRule(comboIndex))
-            and (settings.showAllFinishers or comboIndex ~= primaryRecommendation)) then
+    for _, comboIndex in ipairs(orderedRules) do
+        if (ui.recommendations[comboIndex] or IsStarterRule(comboIndex)) then
             AddRecommendation(comboIndex);
         end
     end
@@ -1439,7 +1433,8 @@ function ui.UpdateDisplay()
             ui.status:SetText(warning or L("main.noCombos"));
         else
             local pending;
-            for index, cfg in ipairs(settings.seqs) do
+            for _, index in ipairs(orderedRules) do
+                local cfg = settings.seqs[index];
                 if (#GetTriggers(cfg) > 0 and not ui.states[index].done) then
                     pending = index;
                     break;
@@ -1498,6 +1493,7 @@ OpenSequenceEditor = function(rowIndex, slotIndex)
                 return true;
             end,
             function()
+                UpdateActiveSequence();
                 if (RefreshOptionsPanels) then
                     RefreshOptionsPanels();
                 else
@@ -1558,7 +1554,7 @@ end
 
 UpdateActiveSequence = function()
     ui.active = nil;
-    for r = 1, #settings.seqs do
+    for _, r in ipairs(ComboNextLogic.OrderRules(settings.seqs)) do
         local state = ui.states[r];
         if (state.progress > 0) then
             if (ui.active == nil) then
@@ -1566,7 +1562,8 @@ UpdateActiveSequence = function()
             else
                 local activeState = ui.states[ui.active];
                 if ((state.done and not activeState.done)
-                    or (state.done == activeState.done and state.progress > activeState.progress)) then
+                    or (not state.done and not activeState.done
+                        and state.progress > activeState.progress)) then
                     ui.active = r;
                 end
             end
@@ -2716,6 +2713,9 @@ function shellCommand:Execute(_, args)
             for index, combo in ipairs(settings.seqs) do
                 if (type(combo) ~= "table" or type(combo.skills) ~= "table") then
                     error("combo " .. index .. " has invalid data");
+                end
+                if (combo.priority ~= nil and ComboNextLogic.GetPriority(combo) == nil) then
+                    error("combo " .. index .. " has invalid priority (expected 1-9 or none)");
                 end
                 if (type(combo.stepCount) ~= "number" or combo.stepCount < 1
                     or combo.stepCount > MAX_STEPS) then
