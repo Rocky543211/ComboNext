@@ -170,7 +170,7 @@ coverage, not live validation for every class.
 New exports use `CN4` to preserve class conditions as well as each trigger's
 AND/OR connection, trigger modes, and item timer durations. Existing `CN1`, `CN2`,
 and `CN3` exports can still be imported; older combo-wide OR modes are converted
-automatically. `CN4` requires ComboNext 1.40 or later. Invalid class conditions
+automatically. `CN4` is supported by ComboNext 1.4 (2026-10-25) and subsequent releases. Invalid class conditions
 reject an import rather than silently weakening its trigger requirements.
 
 ### Verification
@@ -188,6 +188,16 @@ folder. These use mocked game APIs; they do not replace in-game checks.
 ## Updating
 
 Download the latest repository files and replace the installed `ComboNext` plugin files. Keep a copy of your LOTRO plugin data if you want to preserve a backup of your settings.
+
+### Versioning policy
+
+Use at most one new version number per calendar day, using the maintainer's local
+date. All changes on 2026-10-25 belong to **1.4**, including any further changes
+that day. Additional commits or uploads on the same day keep the existing version
+and update its dated changelog entry. On the next day with changes, advance to the
+next version (1.5, then 1.6, and so on); days without changes do not create releases.
+Keep `Constants.lua`, `ComboNext.plugin`, and the changelog consistent. This replaces
+the earlier per-update version numbering; existing Git history is left unchanged.
 
 ## Compatibility and support
 

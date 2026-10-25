@@ -2,14 +2,17 @@
 
 Notable changes to ComboNext are documented here.
 
-Entries are grouped by release family (1.3 includes 1.30-1.39; 1.4 starts at 1.40). Version groupings
-before 1.35 were reconstructed from the feature set and are approximate.
+One version covers all changes made on the same calendar day in the maintainer's
+local time. All changes on 2026-10-25, including further updates that day, are
+version 1.4. Advance the version only on a later day with changes.
+Earlier 1.0-1.2 entries were reconstructed from the feature set and are approximate.
+Today's intermediate version labels are consolidated below; Git history is unchanged.
 
 ## [Unreleased]
 
 - No unreleased changes yet.
 
-## [1.4] - from 1.40
+## [1.4] - 2026-10-25
 
 - Added class resource/state triggers at the start of each corresponding class's catalog, separate from Effects: Hunter Focus/stances, Champion Fervour, Beorning Wrath/bear form, Rune-keeper attunement/charged state, Mariner raw balance, Brawler Mettle, Guardian Fortification, Warden Advanced Technique/gambit slots/stances, and Minstrel stances.
 - Selected class triggers have comparison/value controls in the editor, support individual AND/OR connections, and work in current-condition and event modes. They cannot be finishers.
@@ -19,21 +22,17 @@ before 1.35 were reconstructed from the feature set and are approximate.
 - CN4 sharing preserves class conditions and rejects malformed class records; CN1/CN2/CN3 imports remain supported.
 - Expanded mocked-API regressions for class readers, boundaries, event re-arming, editor configuration, AND/OR integration, sharing, and verification.
 
-## [1.3] - through 1.39 (2026-10-25)
-
-- Individual AND/OR connections between triggers replace combo-wide OR modes (1.39). AND is the default and binds before OR; clickable slot labels and a selected-trigger button change each connection.
-- Ordered events, any-order events and current-condition modes respect the per-trigger connections. Existing 1.38 OR rules migrate automatically without changing their meaning.
-- CN3 exports preserve the individual connections; CN1/CN2 imports remain supported.
+- Individual AND/OR connections between triggers replace combo-wide OR modes. AND is the default and binds before OR; clickable slot labels and a selected-trigger button change each connection.
+- Ordered events, any-order events and current-condition modes respect the per-trigger connections. Previous combo-wide OR rules migrate automatically without changing their meaning.
 - Live conditions check current health and active/absent effects rather than requiring threshold/effect events in a particular order. Skills and chat can be combined as recent events.
 - Clearer progress messages show which event or condition is missing.
 - Optional ready-only finisher display, using skill cooldowns/usability and configurable item timers with an explicit Mark ready action. Unknown readiness is hidden in ready-only mode.
 - Exact effects and effect families remain independent; one physical effect event advances at most one step of each event-based rule.
 - Verification distinguishes PASS, FAIL and NOT CHECKED, including unreadable skills and unknown item readiness.
-- New CN2 exports preserve trigger modes and item timer durations; older CN1 text remains importable.
 - Added mocked-game regression coverage for trigger modes, readiness, target changes, sharing, editor controls and verification.
 - Effect triggers: gained/lost on yourself or your target, with an effects catalog and search.
 - Effect family triggers: Wound, Poison, Disease, Fear, Corruption, Cry, Song, Elemental, Physical and Tactical, alongside exact-name effects.
-- Health-below triggers at 10/20/30/50/75% on yourself or your target. Target health is checked twice a second and re-arms on target changes (1.37).
+- Health-below triggers at 10/20/30/50/75% on yourself or your target. Target health is checked twice a second and re-arms on target changes.
 - Items, including potions, supported as triggers and finishers.
 - Triggers from captured chat phrases and NPC speech.
 - Multi-step combos with several finisher rules, and a combo chooser with rename and delete.
@@ -41,7 +40,8 @@ before 1.35 were reconstructed from the feature set and are approximate.
 - Interface scale, color themes, finisher slot count, reset timer and "always offer first finisher" options.
 - Localization in English, German and French.
 - `/combnext verify` self-checks; fixed crashes on unavailable skill-name APIs and false failures for unused finisher slots.
-- Initial public GitHub repository, README and changelog (1.35).
+- Initial public GitHub repository, README and changelog.
+- Adopted one version per day: all of today's updates use 1.4 rather than separate per-update version numbers.
 
 ## [1.2] - reconstructed
 

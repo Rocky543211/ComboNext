@@ -2,7 +2,7 @@
   <Information>
     <Name>ComboNext</Name>
     <Author>Rockberg</Author>
-    <Version>1.40</Version>
+    <Version>1.4</Version>
     <Description>Player-created combo advisor with player-activated skill suggestions.</Description>
   </Information>
   <Package>ComboNext.Main</Package>
