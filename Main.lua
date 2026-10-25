@@ -2191,8 +2191,11 @@ function shellCommand:Execute(_, args)
                         or (type(record) == "table" and record.chatPattern)) then
                         return;
                     end
-                    local shortcut = Turbine.UI.Lotro.Shortcut(SKILL_SHORTCUT, data);
-                    local name = shortcut:GetSkillName();
+                    local okShortcut, shortcut = pcall(Turbine.UI.Lotro.Shortcut, SKILL_SHORTCUT, data);
+                    if (not okShortcut or not shortcut or type(shortcut.GetSkillName) ~= "function") then
+                        return;
+                    end
+                    local _, name = pcall(shortcut.GetSkillName, shortcut);
                     if (type(name) == "table") then
                         name = name[1];
                     end
@@ -2293,7 +2296,7 @@ function shellCommand:Execute(_, args)
             end
             for index, choice in ipairs(ui.finisherChoices) do
                 local x = choice.icon:GetPosition();
-                if (x + choice.icon:GetWidth() > WINDOW_WIDTH) then
+                if (index <= math.max(1, settings.finisherSlots or 1) and x + choice.icon:GetWidth() > WINDOW_WIDTH) then
                     error("finisher slot " .. index .. " extends outside the advisor");
                 end
             end
