@@ -3,6 +3,7 @@ import "Turbine.Gameplay";
 import "Turbine.UI";
 import "Turbine.UI.Lotro";
 import "ComboNext.Constants";
+import "ComboNext.ComboLogic";
 import "ComboNext.Localization";
 import "ComboNext.OptionsPanel";
 import "ComboNext.SequenceEditor";
@@ -17,7 +18,7 @@ local MAX_STEPS = ComboNextConstants.maxSteps;
 local MAX_DISPLAY_ROWS = ComboNextConstants.maxDisplayRows;
 local RESET_SECONDS = ComboNextConstants.resetSeconds;
 local SLOT_BIG, SLOT_SMALL = 56, 36;
-local WINDOW_WIDTH, WINDOW_HEIGHT = 390, 280;
+local WINDOW_WIDTH, WINDOW_HEIGHT = 390, 304;
 local settings;
 
 local function GetEffectiveUiScale()
@@ -57,6 +58,10 @@ local onHudKey;
 local RefreshOptionsPanels;
 local ApplyUiScale;
 local ApplyUiTheme;
+local RefreshConditions;
+local GetFinisherReadiness;
+local RecordItemUse;
+local itemCooldowns = {};
 
 local UI_THEMES = {
     gold = {
@@ -274,6 +279,9 @@ if (type(settings.alwaysFirstFinisher) ~= "boolean") then
 end
 if (type(settings.quietMode) ~= "boolean") then
     settings.quietMode = false;
+end
+if (type(settings.readyOnly) ~= "boolean") then
+    settings.readyOnly = false;
 end
 if (type(settings.uiScale) ~= "number") then
     settings.uiScale = 1;
@@ -631,7 +639,7 @@ local function GetTriggers(cfg)
             });
         end
     end
-    triggers.anyOrder = cfg.anyOrder and #triggers > 1 or nil;
+    triggers.mode = ComboNextLogic.GetMode(cfg);
     return triggers;
 end
 
@@ -640,7 +648,10 @@ local function NormalizeSkillName(name)
     return string.lower(string.gsub(plainName, "^%s*(.-)%s*$", "%1"));
 end
 
-local function TriggerMatchesSkill(trigger, skillName, icon)
+local function TriggerMatchesSkill(trigger, skillName, icon, aliases)
+    if (aliases and aliases[trigger.name]) then
+        return true;
+    end
     if (NormalizeSkillName(trigger.name) == NormalizeSkillName(skillName)) then
         return true;
     end
@@ -830,7 +841,7 @@ end
 ui.status = Turbine.UI.Label();
 ui.status:SetParent(ui.win);
 ui.status:SetPosition(12, 258);
-ui.status:SetSize(366, 16);
+ui.status:SetSize(366, 40);
 ui.status:SetForeColor(Turbine.UI.Color(0.8, 0.8, 0.8));
 ui.status:SetTextAlignment(Turbine.UI.ContentAlignment.MiddleCenter);
 ui.status:SetText(L("main.ready"));
@@ -1163,6 +1174,9 @@ function ui.ResetProgress()
         ui.states[r].done = false;
         ui.states[r].matched = {};
         ui.states[r].lastProgressAt = nil;
+        ui.states[r].eventTimes = {};
+        ui.states[r].conditions = nil;
+        ui.states[r].conditionConsumed = nil;
     end
     for r = #ui.states, #settings.seqs + 1, -1 do
         ui.states[r] = nil;
@@ -1220,6 +1234,43 @@ local function IsStarterRule(index)
     return #GetTriggers(cfg) == 0;
 end
 
+local function GetProgressText(index)
+    local cfg, state = settings.seqs[index], ui.states[index];
+    if (state.conditionConsumed) then
+        return L("main.conditionsConsumed", cfg.name);
+    end
+    local triggers = GetTriggers(cfg);
+    local waiting = {};
+    local matched = {};
+    for _, name in ipairs(state.matched or {}) do
+        matched[name] = (matched[name] or 0) + 1;
+    end
+    for step, trigger in ipairs(triggers) do
+        local condition = state.conditions and state.conditions[step];
+        local label = type(trigger.value) == "table"
+            and (trigger.value.skillName or trigger.value.itemName);
+        label = label or trigger.name;
+        if (ComboNextLogic.IsCurrent(triggers.mode)) then
+            if (not condition or condition.satisfied ~= true) then
+                waiting[#waiting + 1] = condition and condition.detail or label;
+            end
+        elseif (matched[trigger.name] and matched[trigger.name] > 0) then
+            matched[trigger.name] = matched[trigger.name] - 1;
+        else
+            waiting[#waiting + 1] = label;
+            if (triggers.mode == "ordered") then
+                break;
+            end
+        end
+    end
+    if (#waiting > 0) then
+        local joiner = (triggers.mode == "or" or triggers.mode == "anyConditions")
+            and L("main.orJoin") or L("main.andJoin");
+        return L("main.waitingFor", cfg.name, table.concat(waiting, joiner));
+    end
+    return L("main.comboProgress", cfg.name);
+end
+
 function ui.UpdateDisplay()
     local warning;
     local primaryRecommendation;
@@ -1236,34 +1287,45 @@ function ui.UpdateDisplay()
     local matchedRecommendationCount = 0;
     local finisherRecommendations = {};
     local shownFinishers = {};
-    if (settings.showAllFinishers) then
-        for comboIndex = 1, #settings.seqs do
-            local cfg = settings.seqs[comboIndex];
-            local finisherKey = cfg.finisher and NormalizeSkillName(GetFinisherName(cfg.finisher) or "");
-            if ((ui.recommendations[comboIndex] or IsStarterRule(comboIndex)) and cfg.finisher
-                and not (finisherKey ~= "" and shownFinishers[finisherKey])) then
-                if (finisherKey ~= "") then
-                    shownFinishers[finisherKey] = true;
-                end
-                matchedRecommendationCount = matchedRecommendationCount + 1;
-                if (#finisherRecommendations < settings.finisherSlots) then
-                    table.insert(finisherRecommendations, comboIndex);
-                end
-            end
+    local blockedReason;
+    local function AddRecommendation(comboIndex)
+        local cfg = settings.seqs[comboIndex];
+        if (not cfg.finisher) then
+            return;
         end
-    elseif (primaryRecommendation and settings.seqs[primaryRecommendation].finisher) then
-        table.insert(finisherRecommendations, primaryRecommendation);
-        matchedRecommendationCount = 1;
-    else
-        for comboIndex = 1, #settings.seqs do
-            if (IsStarterRule(comboIndex)) then
-                table.insert(finisherRecommendations, comboIndex);
-                matchedRecommendationCount = 1;
-                break;
-            end
+        local ready, detail;
+        if (settings.readyOnly and GetFinisherReadiness) then
+            ready, detail = GetFinisherReadiness(cfg.finisher);
+        end
+        if (settings.readyOnly and ready ~= true) then
+            blockedReason = blockedReason or L("main.finisherBlocked", cfg.name,
+                detail or L("main.readinessUnknown"));
+            return;
+        end
+        local key = NormalizeSkillName(GetFinisherName(cfg.finisher) or "");
+        if (key ~= "" and shownFinishers[key]) then
+            return;
+        end
+        shownFinishers[key] = key ~= "" or nil;
+        matchedRecommendationCount = matchedRecommendationCount + 1;
+        local limit = settings.showAllFinishers and settings.finisherSlots or 1;
+        if (#finisherRecommendations < limit) then
+            finisherRecommendations[#finisherRecommendations + 1] = comboIndex;
         end
     end
-    ui.visibleRecommendation = primaryRecommendation;
+    if (not settings.showAllFinishers and primaryRecommendation) then
+        AddRecommendation(primaryRecommendation);
+    end
+    for comboIndex = 1, #settings.seqs do
+        if ((ui.recommendations[comboIndex] or IsStarterRule(comboIndex))
+            and (settings.showAllFinishers or comboIndex ~= primaryRecommendation)) then
+            AddRecommendation(comboIndex);
+        end
+    end
+    ui.visibleRecommendation = finisherRecommendations[1];
+    if (ui.visibleRecommendation and ui.recommendations[ui.visibleRecommendation]) then
+        primaryRecommendation = ui.visibleRecommendation;
+    end
     for r = 1, MAX_DISPLAY_ROWS do
         local comboIndex = r;
         local cfg, row = settings.seqs[comboIndex], ui.rows[r];
@@ -1336,15 +1398,23 @@ function ui.UpdateDisplay()
         else
             status = L("main.sequenceMatched", cfg.name);
         end
-        ui.status:SetText(warning or status);
+        ui.status:SetText(warning or (#finisherRecommendations == 0 and blockedReason) or status);
     elseif (active and ui.states[active].progress > 0) then
         local cfg = settings.seqs[active];
-        ui.status:SetText(warning or L("main.comboProgress", cfg.name));
+        ui.status:SetText(warning or GetProgressText(active));
     else
         if (#settings.seqs == 0) then
             ui.status:SetText(warning or L("main.noCombos"));
         else
-            ui.status:SetText(warning or L("main.ready"));
+            local pending;
+            for index, cfg in ipairs(settings.seqs) do
+                if (#GetTriggers(cfg) > 0 and not ui.states[index].done) then
+                    pending = index;
+                    break;
+                end
+            end
+            ui.status:SetText(warning or (#finisherRecommendations == 0 and blockedReason)
+                or (pending and GetProgressText(pending)) or L("main.ready"));
         end
     end
 end
@@ -1399,6 +1469,13 @@ OpenSequenceEditor = function(rowIndex, slotIndex)
                 if (RefreshOptionsPanels) then
                     RefreshOptionsPanels();
                 else
+                    ui.UpdateDisplay();
+                end
+            end,
+            function(record)
+                if (record.shortcutType == ITEM_SHORTCUT) then
+                    itemCooldowns[NormalizeSkillName(GetFinisherName(record))] =
+                        Turbine.Engine.GetGameTime();
                     ui.UpdateDisplay();
                 end
             end
@@ -1465,68 +1542,10 @@ UpdateActiveSequence = function()
     end
 end
 
-local function AdvanceState(state, triggers, skillName, skillIcon)
-    if (#triggers == 0) then
-        state.progress, state.done, state.matched, state.lastProgressAt = 0, false, {}, nil;
-        return;
-    end
-    if (state.done) then
-        state.progress, state.done, state.matched, state.lastProgressAt = 0, false, {}, nil;
-    end
-
-    if (triggers.anyOrder) then
-        local left = {};
-        for i, trigger in ipairs(triggers) do
-            left[i] = trigger;
-        end
-        for _, name in ipairs(state.matched) do
-            for i, trigger in ipairs(left) do
-                if (NormalizeSkillName(trigger.name) == NormalizeSkillName(name)) then
-                    table.remove(left, i);
-                    break;
-                end
-            end
-        end
-        for i, trigger in ipairs(left) do
-            if (TriggerMatchesSkill(trigger, skillName, skillIcon)) then
-                state.matched[#state.matched + 1] = trigger.name;
-                break;
-            end
-        end
-        state.progress = #state.matched;
-        state.done = state.progress == #triggers;
-        return;
-    end
-
-    local candidate = math.min(state.progress + 1, #triggers);
-    while (candidate > 0) do
-        local matches = true;
-        for i = 1, candidate do
-            local observedIndex = state.progress + 1 - candidate + i;
-            local matchesTrigger;
-            if (observedIndex <= state.progress) then
-                matchesTrigger = NormalizeSkillName(state.matched[observedIndex])
-                    == NormalizeSkillName(triggers[i].name);
-            else
-                matchesTrigger = TriggerMatchesSkill(triggers[i], skillName, skillIcon);
-            end
-            if (not matchesTrigger) then
-                matches = false;
-                break;
-            end
-        end
-        if (matches) then
-            break;
-        end
-        candidate = candidate - 1;
-    end
-
-    state.progress = candidate;
-    state.done = (candidate == #triggers);
-    state.matched = {};
-    for i = 1, candidate do
-        state.matched[i] = triggers[i].name;
-    end
+local function AdvanceState(state, triggers, skillName, skillIcon, aliases)
+    ComboNextLogic.Advance(state, triggers, function(trigger)
+        return TriggerMatchesSkill(trigger, skillName, skillIcon, aliases);
+    end);
 end
 
 local function WouldAdvance(state, triggers, skillName, skillIcon)
@@ -1562,18 +1581,22 @@ local function WouldChangeFromSkillEvent(skillName, skillIcon, actorName)
                     return true;
                 end
             end
-        elseif (WouldAdvance(state, GetTriggers(settings.seqs[r]), skillName, skillIcon)) then
-            return true;
+        else
+            local triggers = GetTriggers(settings.seqs[r]);
+            if (not ComboNextLogic.IsCurrent(triggers.mode)
+                and WouldAdvance(state, triggers, skillName, skillIcon)) then
+                return true;
+            end
         end
     end
     return false;
 end
 
-HandleSkill = function(skillName, actorName, skillIcon)
+HandleSkill = function(skillName, actorName, skillIcon, aliases)
     local now = Turbine.Engine.GetGameTime();
     SetDiagnostic("main.detected", string.sub(string.gsub(skillName, "^@%a+:%a+:", ""), 1, 38),
         string.sub(actorName or L("main.unknown"), 1, 24));
-    if (ui.lastObservedSkill == skillName and ui.lastObservedAt
+    if (not aliases and ui.lastObservedSkill == skillName and ui.lastObservedAt
         and ui.lastObservedActor == actorName
         and (now - ui.lastObservedAt) < 0.3) then
         if (not WouldChangeFromSkillEvent(skillName, skillIcon, actorName)) then
@@ -1581,6 +1604,9 @@ HandleSkill = function(skillName, actorName, skillIcon)
         end
     end
     ui.lastObservedSkill, ui.lastObservedActor, ui.lastObservedAt = skillName, actorName, now;
+    if (RecordItemUse and IsLocalActor(actorName)) then
+        RecordItemUse(skillName);
+    end
 
     for r = 1, #settings.seqs do
         local cfg = settings.seqs[r];
@@ -1590,7 +1616,7 @@ HandleSkill = function(skillName, actorName, skillIcon)
                 ui.recommendations[r] = nil;
                 local state = ui.states[r];
                 if (state) then
-                    state.progress, state.done, state.matched, state.lastProgressAt = 0, false, {}, nil;
+                    ComboNextLogic.Consume(state);
                 end
             end
         end
@@ -1599,10 +1625,21 @@ HandleSkill = function(skillName, actorName, skillIcon)
     for r = 1, #settings.seqs do
         local state = ui.states[r];
         local triggers = GetTriggers(settings.seqs[r]);
-        if (not (state.done and ui.recommendations[r])) then
-            AdvanceState(state, triggers, skillName, skillIcon);
+        if (ComboNextLogic.IsCurrent(triggers.mode)) then
+            state.eventTimes = state.eventTimes or {};
+            for index, trigger in ipairs(triggers) do
+                if (not (type(trigger.value) == "table" and trigger.value.effectName)
+                    and TriggerMatchesSkill(trigger, skillName, skillIcon, aliases)) then
+                    state.eventTimes[index] = now;
+                end
+            end
+        elseif (not (state.done and ui.recommendations[r])) then
+            AdvanceState(state, triggers, skillName, skillIcon, aliases);
             state.lastProgressAt = state.progress > 0 and now or nil;
         end
+    end
+    if (RefreshConditions) then
+        RefreshConditions();
     end
     UpdateActiveSequence();
     for r = 1, #settings.seqs do
@@ -1623,8 +1660,7 @@ end
 local player = Turbine.Gameplay.LocalPlayer.GetInstance();
 local lastLocalSkillAt = {};
 local watchedSkills = {};
-local lastTrainedSkills;
-local lastTrainedSkillCount;
+local trainedByName = {};
 local function OnLocalSkillActivated(observedSkillName, icon)
     local now = Turbine.Engine.GetGameTime();
     local eventKey = icon or observedSkillName;
@@ -1659,8 +1695,7 @@ local function OnLocalSkillActivated(observedSkillName, icon)
             ui.recommendations[r] = nil;
             local state = ui.states[r];
             if (state) then
-                state.progress, state.done, state.matched,
-                    state.lastProgressAt = 0, false, {}, nil;
+                ComboNextLogic.Consume(state);
             end
         end
     end
@@ -1680,34 +1715,109 @@ local function BindTrainedSkillListeners()
         return;
     end
     local skillCount = skills:GetCount();
-    if (skills == lastTrainedSkills and skillCount == lastTrainedSkillCount) then
-        return;
-    end
-    lastTrainedSkills, lastTrainedSkillCount = skills, skillCount;
+    trainedByName = {};
     for i = 1, skillCount do
         local skill = skills:GetItem(i);
-        if (skill and not watchedSkills[skill]) then
+        if (skill) then
             local skillInfo = skill:GetSkillInfo();
             local skillName = skillInfo and skillInfo:GetName();
             if (type(skillName) == "string" and skillName ~= "") then
-                watchedSkills[skill] = true;
-                local observedSkillName = skillName;
-                local icon = skillInfo:GetIconImageID();
-                AddCallback(skill, "ResetTimeChanged", function(sender)
-                    local now = Turbine.Engine.GetGameTime();
-                    local cooldown = sender:GetCooldown();
-                    local resetTime = sender:GetResetTime();
-                    if (type(cooldown) ~= "number" or type(resetTime) ~= "number"
-                        or (resetTime - now) + 0.1 <= cooldown) then
-                        return;
-                    end
-                    OnLocalSkillActivated(observedSkillName, icon);
-                end);
+                trainedByName[NormalizeSkillName(skillName)] = skill;
+                if (not watchedSkills[skill]) then
+                    watchedSkills[skill] = true;
+                    local observedSkillName = skillName;
+                    local icon = skillInfo:GetIconImageID();
+                    local previousReset = skill:GetResetTime();
+                    AddCallback(skill, "ResetTimeChanged", function(sender)
+                        local now = Turbine.Engine.GetGameTime();
+                        local resetTime = sender:GetResetTime();
+                        local started = type(resetTime) == "number" and resetTime > now
+                            and (type(previousReset) ~= "number" or resetTime > previousReset);
+                        previousReset = resetTime;
+                        if (started) then
+                            OnLocalSkillActivated(observedSkillName, icon);
+                        end
+                    end);
+                end
             end
         end
     end
 end
 BindTrainedSkillListeners();
+
+RecordItemUse = function(name)
+    local key = NormalizeSkillName(name);
+    local duration = 0;
+    for _, cfg in ipairs(settings.seqs) do
+        local function CheckItem(record)
+            if (type(record) == "table" and record.shortcutType == ITEM_SHORTCUT
+                and NormalizeSkillName(record.itemName or record.skillName) == key) then
+                duration = math.max(duration, tonumber(record.itemCooldown) or 0);
+            end
+        end
+        CheckItem(cfg.finisher);
+        for _, record in pairs(cfg.skills) do
+            CheckItem(record);
+        end
+    end
+    if (duration > 0) then
+        itemCooldowns[key] = Turbine.Engine.GetGameTime() + duration;
+    end
+end
+
+GetFinisherReadiness = function(record)
+    local shortcutType = GetShortcutInfo(record);
+    local key = NormalizeSkillName(GetFinisherName(record));
+    local now = Turbine.Engine.GetGameTime();
+    if (shortcutType == SKILL_SHORTCUT) then
+        local skill = trainedByName[key];
+        if (not skill or not skill.GetResetTime) then
+            return nil, L("main.readinessUnknown");
+        end
+        local ok, resetTime = pcall(skill.GetResetTime, skill);
+        if (not ok) then
+            return nil, L("main.readinessUnknown");
+        end
+        local ready = ComboNextLogic.CooldownReady(resetTime, now);
+        if (ready == false) then
+            return false, L("main.cooldownRemaining", math.ceil(resetTime - now));
+        end
+        if (ready and skill.IsUsable) then
+            local usableOk, usable = pcall(skill.IsUsable, skill);
+            if (not usableOk) then
+                return nil, L("main.readinessUnknown");
+            elseif (not usable) then
+                return false, L("main.skillUnavailable");
+            end
+        end
+        return ready, ready == nil and L("main.readinessUnknown") or nil;
+    elseif (shortcutType == ITEM_SHORTCUT) then
+        local duration = type(record) == "table" and tonumber(record.itemCooldown);
+        if (not duration or duration < 1 or duration > 3600) then
+            return nil, L("main.itemTimerUnknown");
+        end
+        local expiry = itemCooldowns[key];
+        if (expiry and expiry > now) then
+            return false, L("main.cooldownRemaining", math.ceil(expiry - now));
+        end
+        local backpack = player and player.GetBackpack and player:GetBackpack();
+        if (not backpack) then
+            return nil, L("main.readinessUnknown");
+        end
+        for index = 1, backpack:GetSize() do
+            local item = backpack:GetItem(index);
+            if (item and NormalizeSkillName(item:GetName()) == key
+                and item:GetQuantity() > 0) then
+                if (not expiry) then
+                    return nil, L("main.itemTimerUnknown");
+                end
+                return true;
+            end
+        end
+        return false, L("main.itemMissing");
+    end
+    return nil, L("main.readinessUnknown");
+end
 
 local recentEffects = {};
 local hookedEffectLists = setmetatable({}, { __mode = "k" });
@@ -1761,8 +1871,8 @@ local function OnEffectEvent(scope, event, effect)
         end
     end
     local actorName = player and player.GetName and player:GetName() or "You";
-    for triggerName in pairs(fired) do
-        HandleSkill(triggerName, actorName, nil);
+    if (next(fired)) then
+        HandleSkill(key, actorName, nil, fired);
     end
 end
 
@@ -1771,20 +1881,39 @@ local function HookEffectList(list, scope)
         return;
     end
     hookedEffectLists[list] = true;
+    local function IsCurrentTargetList()
+        if (scope ~= "target") then
+            return true;
+        end
+        local target = player:GetTarget();
+        return target and target.GetEffects and target:GetEffects() == list;
+    end
     AddCallback(list, "EffectAdded", function(_, args)
-        pcall(function()
+        if (not IsCurrentTargetList()) then
+            return;
+        end
+        local ok, err = pcall(function()
             local effect = list:Get(args.Index);
             if (effect) then
                 OnEffectEvent(scope, "gained", effect);
             end
         end);
+        if (not ok) then
+            Turbine.Shell.WriteLine("ComboNext effect event error: " .. tostring(err));
+        end
     end);
     AddCallback(list, "EffectRemoved", function(_, args)
-        pcall(function()
+        if (not IsCurrentTargetList()) then
+            return;
+        end
+        local ok, err = pcall(function()
             if (args.Effect) then
                 OnEffectEvent(scope, "lost", args.Effect);
             end
         end);
+        if (not ok) then
+            Turbine.Shell.WriteLine("ComboNext effect event error: " .. tostring(err));
+        end
     end);
 end
 
@@ -1800,7 +1929,90 @@ local function GetMoralePercent(actor)
     return ok and percent or nil;
 end
 
-local function CheckHealthTriggers(forceRearm)
+local function GetConditionStatus(trigger, actors, now, state, index)
+    local record = trigger.value;
+    if (type(record) ~= "table" or not record.effectName) then
+        local eventTime = state.eventTimes and state.eventTimes[index];
+        return eventTime ~= nil and now - eventTime <= settings.resetSeconds,
+            L("main.recentEvent", type(record) == "table"
+                and (record.skillName or record.itemName or trigger.name) or trigger.name);
+    end
+    local scope = record.effectScope == "target" and "target" or "self";
+    local actor = actors[scope];
+    local scopeLabel = L(scope == "target" and "main.target" or "main.self");
+    if (not actor) then
+        return nil, L("main.actorUnavailable", scopeLabel);
+    end
+    local threshold = tonumber(string.match(record.effectName, "^!hp<(%d+)$"));
+    if (threshold) then
+        local percent = GetMoralePercent(actor);
+        if (percent == nil) then
+            return nil, L("main.actorUnavailable", scopeLabel);
+        end
+        return percent < threshold,
+            L("main.healthCondition", scopeLabel, math.floor(percent), threshold);
+    end
+    if (not actor.GetEffects) then
+        return nil, L("main.actorUnavailable", scopeLabel);
+    end
+    local ok, found = pcall(function()
+        local effects = actor:GetEffects();
+        local family = string.match(record.effectName, "^#(%a+)$");
+        for effectIndex = 1, effects:GetCount() do
+            local effect = effects:Get(effectIndex);
+            if (family) then
+                local category = effect:GetCategory();
+                if (type(category) ~= "number") then
+                    error("effect category unavailable");
+                end
+                local known = false;
+                for _, entry in ipairs(effectFamilies) do
+                    if (entry.name == family) then
+                        known = true;
+                    end
+                    if (entry.name == family and HasAllBits(category, entry.mask)) then
+                        return true;
+                    end
+                end
+                if (not known) then
+                    error("effect family unavailable");
+                end
+            elseif (NormalizeSkillName(effect:GetName()) == NormalizeSkillName(record.effectName)
+                or (GetSkillLocale() ~= "en" and record.icon
+                    and effect:GetIcon() == record.icon)) then
+                return true;
+            end
+        end
+        return false;
+    end);
+    if (not ok) then
+        return nil, L("main.actorUnavailable", scopeLabel);
+    end
+    local satisfied = found;
+    if (record.effectEvent == "lost") then
+        satisfied = not found;
+    end
+    return satisfied, L(record.effectEvent == "lost" and "main.effectAbsent"
+        or "main.effectPresent", record.skillName or record.effectName, scopeLabel);
+end
+
+RefreshConditions = function()
+    local actors = { self = player; target = player:GetTarget() };
+    local now = Turbine.Engine.GetGameTime();
+    for index, cfg in ipairs(settings.seqs) do
+        local triggers = GetTriggers(cfg);
+        if (ComboNextLogic.IsCurrent(triggers.mode)) then
+            local state = ui.states[index];
+            local done = ComboNextLogic.EvaluateConditions(state, triggers, function(trigger, step)
+                return GetConditionStatus(trigger, actors, now, state, step);
+            end);
+            ui.recommendations[index] = done and cfg.finisher ~= nil or nil;
+            state.lastProgressAt = state.progress > 0 and now or nil;
+        end
+    end
+end
+
+local function CheckHealthTriggers()
     local actors = { self = player };
     local okTarget, target = pcall(function() return player:GetTarget(); end);
     if (okTarget and target and target.GetMorale) then
@@ -1808,7 +2020,8 @@ local function CheckHealthTriggers(forceRearm)
     end
     local wanted = { self = {}; target = {} };
     for r = 1, #settings.seqs do
-        for _, trigger in ipairs(GetTriggers(settings.seqs[r])) do
+        local triggers = GetTriggers(settings.seqs[r]);
+        for _, trigger in ipairs(not ComboNextLogic.IsCurrent(triggers.mode) and triggers or {}) do
             local scope, threshold = string.match(trigger.name, "^@(%a+):gained:!hp<(%d+)$");
             if (scope and wanted[scope]) then
                 wanted[scope][tonumber(threshold)] = trigger.name;
@@ -1818,13 +2031,19 @@ local function CheckHealthTriggers(forceRearm)
     local actorName = player.GetName and player:GetName() or "You";
     for scope, thresholds in pairs(wanted) do
         local percent = actors[scope] and GetMoralePercent(actors[scope]);
+        local fired = {};
+        local first;
         for threshold, triggerName in pairs(thresholds) do
             if (not percent or percent >= threshold) then
                 healthArmed[scope][threshold] = percent and true or nil;
             elseif (healthArmed[scope][threshold] ~= false) then
                 healthArmed[scope][threshold] = false;
-                HandleSkill(triggerName, actorName, nil);
+                fired[triggerName] = true;
+                first = first or triggerName;
             end
+        end
+        if (first) then
+            HandleSkill(first, actorName, nil, fired);
         end
     end
 end
@@ -1843,6 +2062,9 @@ healthPoller.Update = function()
     if (now - lastHealthPoll >= 0.5) then
         lastHealthPoll = now;
         CheckHealthTriggers();
+        RefreshConditions();
+        UpdateActiveSequence();
+        ui.UpdateDisplay();
     end
 end;
 healthPoller:SetWantsUpdates(true);
@@ -1861,6 +2083,15 @@ pcall(function()
     AddCallback(player, "TargetChanged", function()
         lastTargetChangeAt = Turbine.Engine.GetGameTime();
         healthArmed.target = {};
+        for index, cfg in ipairs(settings.seqs) do
+            for _, record in pairs(cfg.skills) do
+                if (type(record) == "table" and record.effectScope == "target") then
+                    ui.states[index] = NewProgressState();
+                    ui.recommendations[index] = nil;
+                    break;
+                end
+            end
+        end
         HookTargetEffects();
     end);
     HookTargetEffects();
@@ -1997,9 +2228,15 @@ ui.ticker.Update = function()
     end
     local resetAny = false;
     for index, state in ipairs(ui.states) do
+        local cfg = settings.seqs[index];
         local timeout = state.done and ui.recommendations[index]
             and RECOMMENDATION_SECONDS or settings.resetSeconds;
-        if (state.progress > 0 and state.lastProgressAt
+        if (state.done and ui.recommendations[index] and settings.readyOnly
+            and GetFinisherReadiness(cfg.finisher) ~= true) then
+            state.lastProgressAt = now;
+        end
+        if (not ComboNextLogic.IsCurrent(ComboNextLogic.GetMode(cfg))
+            and state.progress > 0 and state.lastProgressAt
             and now - state.lastProgressAt > timeout) then
             state.progress, state.done, state.matched, state.lastProgressAt = 0, false, {}, nil;
             ui.recommendations[index] = nil;
@@ -2043,11 +2280,11 @@ OpenOptionsWindow = function()
         optionsWindow:SetText(L("main.optionsTitle"));
         optionsWindow:SetWantsKeyEvents(true);
         optionsWindow.KeyDown = onHudKey;
-        optionsWindow:SetSize(430, 316);
+        optionsWindow:SetSize(430, 348);
         optionsWindow:SetScale(GetEffectiveUiScale());
         optionsWindow:SetPosition(
             math.max(0, math.floor((Turbine.UI.Display.GetWidth() - 430) / 2)),
-            math.max(0, math.floor((Turbine.UI.Display.GetHeight() - 316) / 2))
+            math.max(0, math.floor((Turbine.UI.Display.GetHeight() - 348) / 2))
         );
 
         local panel = CreateOptionsPanel();
@@ -2123,10 +2360,13 @@ function shellCommand:Execute(_, args)
             string.match(args or "", "^%s*%S+%s*(.-)%s*$") or ""
         );
         local verifyCatalog = verifyDetails == "catalog";
-        local passed, failed = 0, 0;
+        local passed, failed, unchecked = 0, 0, 0;
         local function Check(name, test)
             local ok, detail = pcall(test);
-            if (ok and detail ~= false) then
+            if (ok and type(detail) == "table" and detail.unchecked) then
+                unchecked = unchecked + 1;
+                Turbine.Shell.WriteLine(L("main.verifyUnchecked", name, detail.unchecked));
+            elseif (ok and detail ~= false) then
                 passed = passed + 1;
                 Turbine.Shell.WriteLine(L("main.verifyPass", name
                     .. (type(detail) == "string" and (" - " .. detail) or "")));
@@ -2207,7 +2447,7 @@ function shellCommand:Execute(_, args)
                         trainedNames[NormalizeSkillName(name)] = true;
                     end
                 end
-                local checked, missing = 0, 0;
+                local checked, missing, unresolved = 0, 0, 0;
                 local function CheckRecord(record)
                     local shortcutType, data = GetShortcutInfo(record);
                     if (type(record) == "table" and record.effectName) then
@@ -2218,20 +2458,26 @@ function shellCommand:Execute(_, args)
                         return;
                     end
                     local okShortcut, shortcut = pcall(Turbine.UI.Lotro.Shortcut, SKILL_SHORTCUT, data);
-                    if (not okShortcut or not shortcut or type(shortcut.GetSkillName) ~= "function") then
+                    if (not okShortcut or not shortcut) then
+                        missing = missing + 1;
                         return;
                     end
-                    local _, name = pcall(shortcut.GetSkillName, shortcut);
+                    if (type(shortcut.GetSkillName) ~= "function") then
+                        unresolved = unresolved + 1;
+                        return;
+                    end
+                    local okName, name = pcall(shortcut.GetSkillName, shortcut);
                     if (type(name) == "table") then
                         name = name[1];
                     end
-                    if (type(name) == "string" and name ~= "") then
+                    if (okName and type(name) == "string" and name ~= ""
+                        and not string.match(name, "^0[xX]")) then
                         checked = checked + 1;
                         if (not trainedNames[NormalizeSkillName(name)]) then
                             missing = missing + 1;
                         end
                     else
-                        missing = missing + 1;
+                        unresolved = unresolved + 1;
                     end
                 end
                 for _, combo in ipairs(settings.seqs) do
@@ -2241,7 +2487,12 @@ function shellCommand:Execute(_, args)
                     CheckRecord(combo.finisher);
                 end
                 if (missing > 0) then
-                    error(tostring(missing) .. " configured skills are not trained or no longer resolve");
+                    error(tostring(missing) .. " configured skills are not trained or invalid; "
+                        .. tostring(unresolved) .. " could not be checked");
+                end
+                if (unresolved > 0) then
+                    return { unchecked = tostring(checked) .. " checked; "
+                        .. tostring(unresolved) .. " could not be read through the LOTRO API" };
                 end
                 return tostring(checked) .. " configured skills checked";
             end);
@@ -2280,6 +2531,13 @@ function shellCommand:Execute(_, args)
                             or record.skillName == "" or string.match(record.skillName, "^0[xX]"))) then
                         error(label .. " has no stored skill name");
                     end
+                    if (shortcutType == ITEM_SHORTCUT and type(record) == "table"
+                        and record.itemCooldown ~= nil) then
+                        local duration = tonumber(record.itemCooldown);
+                        if (not duration or duration < 1 or duration > 3600 or duration % 1 ~= 0) then
+                            error(label .. " has an invalid item cooldown");
+                        end
+                    end
                 elseif (allowChatPattern and type(record) == "table"
                     and type(record.chatPattern) == "string" and record.chatPattern ~= "") then
                     return;
@@ -2296,13 +2554,18 @@ function shellCommand:Execute(_, args)
                     error("combo " .. index .. " has invalid trigger count");
                 end
                 combos = combos + 1;
+                local mode = ComboNextLogic.GetMode(combo);
+                if (mode ~= "ordered" and mode ~= "any" and mode ~= "or"
+                    and mode ~= "allConditions" and mode ~= "anyConditions") then
+                    error("combo " .. index .. " has invalid trigger mode");
+                end
                 for step = 1, combo.stepCount do
                     local record = combo.skills[step];
                     if (record) then
                         triggers = triggers + 1;
-                        if (type(record) ~= "table" or type(record.skillName) ~= "string"
-                            or record.skillName == "") then
-                            error("combo " .. index .. " trigger " .. step .. " has no skill name");
+                        local name = type(record) == "table" and (record.itemName or record.skillName);
+                        if (type(name) ~= "string" or name == "") then
+                            error("combo " .. index .. " trigger " .. step .. " has no trigger name");
                         end
                         CheckShortcut(record, "combo " .. index .. " trigger " .. step, true);
                     end
@@ -2331,7 +2594,24 @@ function shellCommand:Execute(_, args)
         Check("slash command registration", function()
             return commandRegistered;
         end);
-        Turbine.Shell.WriteLine(L("main.verifyDone", passed, failed));
+        Check("finisher readiness coverage", function()
+            local known, unknown = 0, 0;
+            for _, cfg in ipairs(settings.seqs) do
+                if (cfg.finisher) then
+                    if (GetFinisherReadiness(cfg.finisher) == nil) then
+                        unknown = unknown + 1;
+                    else
+                        known = known + 1;
+                    end
+                end
+            end
+            if (unknown > 0) then
+                return { unchecked = tostring(known) .. " known; " .. tostring(unknown)
+                    .. " unknown (item timers need a duration and observed use or Mark ready)" };
+            end
+            return tostring(known) .. " finishers have known readiness";
+        end);
+        Turbine.Shell.WriteLine(L("main.verifyDone", passed, failed, unchecked));
     elseif (action == "") then
         ui.win:SetVisible(not ui.win:IsVisible());
     else

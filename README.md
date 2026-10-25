@@ -6,9 +6,12 @@ ComboNext is a player-created combo advisor for **The Lord of the Rings Online**
 
 - Create and edit named combos with skill triggers and recommended finishers.
 - Match triggers from combat chat, local skill-use events, captured chat phrases, and configured effects.
+- Use ordered events, all events in any order, a single event (OR), or live AND/OR conditions.
+- Check effect families, exact raid effects, and health thresholds on yourself or your target.
 - Choose trigger skills from the class skill catalog or drag shortcuts from your action bar.
 - Share combo configurations by exporting text to copy or importing text from another player.
 - Customize the advisor's opacity, scale, colors, reset timer, and finisher display.
+- Optionally hide finishers until ready, using skill cooldowns and player-configured item timers.
 - Use the English, German, or French interface.
 
 ## Install
@@ -39,6 +42,71 @@ Useful slash commands:
 | `/combnext verify catalog` | Also verify the skill catalog |
 
 Use **Share combos** in the editor to export or import combo text. Imports can be added to the current combos or replace them; the editor also offers an undo option for an import.
+
+### Trigger logic
+
+Click the trigger-mode button near the bottom of the editor to choose:
+
+| Mode | Meaning |
+| --- | --- |
+| Ordered events | Each event must happen in the displayed order. |
+| All events, any order | Every event must happen, but the order does not matter. |
+| Any event (OR) | Any one of the configured events completes the rule. |
+| All conditions (AND) | Every condition must be true at the same time. |
+| Any condition (OR) | One currently true condition is enough. |
+
+Existing combos keep their ordered/any-order behavior until you change the mode.
+In condition modes, an effect set to **gained** means currently active and **lost**
+means currently absent. Health means currently below the threshold. Skill, item-use,
+and chat triggers count as recent events for the configured reset time. For example,
+an active Poison AND health below 20% works whichever became true first, and stops
+qualifying if the poison clears or health recovers. A missing target or unreadable
+condition is unknown, not proof that an effect is absent.
+
+Conditions are refreshed twice per second. After using a finisher, a continuously
+true condition rule must stop qualifying before it can recommend again. Switching
+targets resets rules that depend on the old target.
+
+The advisor status explains the next missing event or unmet current condition.
+An effect family and an individual effect remain independent selections. A single
+effect event can satisfy either in separate rules, but advances at most one step
+per event-based rule. In condition modes, both can be true simultaneously.
+**A generic Wound rule still matches special raid wounds:** a separate exact-effect
+rule does not automatically exclude those wounds from the generic rule. Do not
+configure a generic potion rule where that would be unsafe.
+
+### Finisher readiness
+
+In **OPTIONS**, choose **ready only** or **show even on cooldown**. The default
+keeps the previous show-always behavior. Ready-only hides unavailable skills,
+missing items, and unknown readiness; hiding a finisher does not consume it or
+discard its completed event progress. A condition-based rule must still qualify
+when the finisher becomes ready.
+
+Skills use the game's trained-skill cooldown and usability information. For an item,
+select its slot in the editor, enter its cooldown in seconds (1-3600), then **Save**.
+If you know the item is ready, click **Mark ready**. This explicitly initializes
+the timer; otherwise its readiness remains unknown until observed use.
+
+Item timers start when ComboNext recognizes the item's use in combat chat. They are
+estimates, not the game's actual item cooldowns. Use the show-always setting if your
+item does not produce a recognizable chat message. Timers for the same item name
+are shared across its combo entries, but shared cooldowns between different items
+are not detected. After reloading the plugin, item readiness is unknown again.
+Mark ready only after checking the actual cooldown in-game.
+
+New exports use `CN2` to preserve trigger modes and item timer durations. Existing
+`CN1` exports can still be imported; `CN2` requires ComboNext 1.38 or later.
+
+### Verification
+
+`/combnext verify` and `/combnext verify catalog` report **PASS**, **FAIL**, or
+**NOT CHECKED**. Not checked means LOTRO did not expose enough information, rather
+than that the configuration passed. The summary includes all three counts.
+Unobserved item timers and unreadable skill shortcuts are explicitly reported.
+
+For local regression checks without LOTRO, run `lua tests/run.lua` from this
+folder. These use mocked game APIs; they do not replace in-game checks.
 
 ## Updating
 

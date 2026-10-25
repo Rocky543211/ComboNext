@@ -2,10 +2,11 @@ import "Turbine";
 import "Turbine.UI";
 import "Turbine.UI.Lotro";
 import "ComboNext.Constants";
+import "ComboNext.ComboLogic";
 import "ComboNext.Localization";
 
 local L = ComboNextL;
-local HEADER = "CN1";
+local HEADER = "CN2";
 local MAX_IMPORT_COMBOS = 60;
 
 local function Escape(text)
@@ -54,7 +55,12 @@ local function EncodeRecord(record, findSkill)
         name = nil;
     end
     data = string.match(data, "^0[xX](%x+)$") or data;
-    return kind .. ":" .. Escape(data) .. (name and (":" .. Escape(name)) or "");
+    local encoded = kind .. ":" .. Escape(data) .. (name and (":" .. Escape(name)) or "");
+    if (kind == "I") then
+        encoded = kind .. ":" .. Escape(data) .. ":" .. Escape(name)
+            .. ":" .. tostring(tonumber(record.itemCooldown) or "");
+    end
+    return encoded;
 end
 
 local function EncodeCombo(rules, index, findSkill)
@@ -71,7 +77,7 @@ local function EncodeCombo(rules, index, findSkill)
         end
         local finisher = EncodeRecord(cfg.finisher, findSkill);
         if (finisher ~= "" or table.concat(tokens) ~= "") then
-            fields[#fields + 1] = tostring(steps);
+            fields[#fields + 1] = tostring(steps) .. ":" .. ComboNextLogic.GetMode(cfg);
             fields[#fields + 1] = table.concat(tokens, ",");
             fields[#fields + 1] = finisher;
         end
@@ -219,11 +225,17 @@ function ComboNextShareWindow:DecodeRecord(token)
         return false;
     end
     if (kind == "I") then
+        local duration = tonumber(fields[4]);
+        if (fields[4] and fields[4] ~= ""
+            and (not duration or duration < 1 or duration > 3600 or duration % 1 ~= 0)) then
+            return false;
+        end
         return {
             shortcutType = shortcutType;
             data = data;
             itemName = name ~= "" and name or nil;
             skillName = name ~= "" and name or nil;
+            itemCooldown = duration;
         };
     end
     local catalog = self.findSkill(data);
@@ -249,7 +261,7 @@ end
 function ComboNextShareWindow:Import(replace)
     local text = string.gsub(self.box:GetText() or "", "%s+", "");
     local parts = Split(text, "!");
-    if (parts[1] ~= HEADER or #parts < 2) then
+    if ((parts[1] ~= HEADER and parts[1] ~= "CN1") or #parts < 2) then
         self.status:SetText(L("share.invalid"));
         return;
     end
@@ -264,11 +276,24 @@ function ComboNextShareWindow:Import(replace)
         end
         local groupRules = {};
         for base = 2, #fields, 3 do
-            local steps = math.max(1, math.min(maxSteps, math.floor(tonumber(fields[base]) or 1)));
+            local stepText, mode;
+            if (parts[1] == HEADER) then
+                stepText, mode = string.match(fields[base] or "", "^(%d+):(%a+)$");
+                if (not stepText or (mode ~= "ordered" and mode ~= "any" and mode ~= "or"
+                    and mode ~= "allConditions" and mode ~= "anyConditions")) then
+                    self.status:SetText(L("share.invalid"));
+                    return;
+                end
+            else
+                stepText, mode = fields[base], "ordered";
+            end
+            local steps = math.max(1, math.min(maxSteps, math.floor(tonumber(stepText) or 1)));
             local cfg = {
                 name = comboName;
                 skills = {};
                 stepCount = steps;
+                triggerMode = mode;
+                anyOrder = mode == "any" or nil;
             };
             local tokens = Split(fields[base + 1] or "", ",");
             local last = 0;

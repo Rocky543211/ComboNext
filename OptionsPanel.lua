@@ -15,7 +15,7 @@ function ComboNextOptionsPanel:Constructor(settings, saveSettings, refresh, appl
     self.refresh = refresh;
     self.applyScale = applyScale;
     self.applyTheme = applyTheme;
-    self:SetSize(390, 266);
+    self:SetSize(390, 298);
 
     local function AddLabel(text, x, y, w, h, color)
         local label = Turbine.UI.Label();
@@ -83,7 +83,13 @@ function ComboNextOptionsPanel:Constructor(settings, saveSettings, refresh, appl
         self:RefreshValues();
         self.saveSettings();
     end);
-    AddLabel(L("options.scaleHint"), 12, 240, 366, 18);
+    self.readyButton = AddButton("", 12, 240, 366, function()
+        self.settings.readyOnly = not self.settings.readyOnly;
+        self:RefreshValues();
+        self.saveSettings();
+        self.refresh();
+    end);
+    AddLabel(L("options.scaleHint"), 12, 272, 366, 18);
 
     self:RefreshValues();
 end
@@ -171,4 +177,6 @@ function ComboNextOptionsPanel:RefreshValues()
         and "options.starterOn" or "options.starterOff"));
     self.scaleButton:SetText(L("options.scale", math.floor((self.settings.uiScale or 1) * 100)));
     self.themeButton:SetText(L("options.theme", L("options.theme." .. (self.settings.uiTheme or "gold"))));
+    self.readyButton:SetText(L(self.settings.readyOnly and "options.readyOnly"
+        or "options.showCooldowns"));
 end

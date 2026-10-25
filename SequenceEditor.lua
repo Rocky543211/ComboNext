@@ -2,6 +2,7 @@ import "Turbine";
 import "Turbine.UI";
 import "Turbine.UI.Lotro";
 import "ComboNext.Constants";
+import "ComboNext.ComboLogic";
 import "ComboNext.Localization";
 
 local L = ComboNextL;
@@ -15,7 +16,7 @@ local function ClassLabel(className)
     return className;
 end
 
-function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames, makeSkillRecord, save, changed, beginCapture, displayChanged)
+function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames, makeSkillRecord, save, changed, beginCapture, displayChanged, markItemReady)
     Turbine.UI.Lotro.Window.Constructor(self);
     self.settings = settings;
     self.getSkills = getSkills;
@@ -24,6 +25,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
     self.save = save;
     self.changed = changed;
     self.displayChanged = displayChanged;
+    self.markItemReady = markItemReady;
     self.comboIndex = 1;
     self.selectedSlot = 1;
     self.page = 1;
@@ -33,10 +35,10 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
     self.maxCells = 35;
     self.beginCapture = beginCapture;
     self:SetText(L("editor.title", ComboNextConstants.version));
-    self:SetSize(500, 656);
+    self:SetSize(500, 696);
     self:SetPosition(
         math.max(0, Turbine.UI.Display.GetWidth() - 510),
-        math.max(0, math.floor((Turbine.UI.Display.GetHeight() - 656) / 2))
+        math.max(0, math.floor((Turbine.UI.Display.GetHeight() - 696) / 2))
     );
 
     self.previousCombo = Turbine.UI.Lotro.Button();
@@ -584,15 +586,83 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         if (not combo) then
             return;
         end
-        local value = not self.settings.seqs[combo.rules[1]].anyOrder or nil;
-        for _, index in ipairs(combo.rules) do
-            self.settings.seqs[index].anyOrder = value;
+        local menu = Turbine.UI.ContextMenu();
+        for _, mode in ipairs({ "ordered", "any", "or", "allConditions", "anyConditions" }) do
+            local selectedMode = mode;
+            local item = Turbine.UI.MenuItem(L("editor.mode." .. mode));
+            item.Click = function()
+                for _, index in ipairs(combo.rules) do
+                    self.settings.seqs[index].triggerMode = selectedMode;
+                    self.settings.seqs[index].anyOrder = selectedMode == "any" or nil;
+                end
+                self.save();
+                self.changed();
+                self:Refresh();
+                self.status:SetText(L("editor.modeHint." .. selectedMode));
+            end;
+            menu:GetItems():Add(item);
         end
-        self.save();
-        self.changed();
-        self:Refresh();
+        menu:ShowMenu();
     end;
 
+    self.itemTimerLabel = Turbine.UI.Label();
+    self.itemTimerLabel:SetParent(self);
+    self.itemTimerLabel:SetPosition(16, 608);
+    self.itemTimerLabel:SetSize(146, 24);
+    self.itemTimerLabel:SetText(L("editor.itemCooldown"));
+    self.itemTimerLabel:SetForeColor(Turbine.UI.Color(0.95, 0.95, 0.95));
+    self.itemTimerText = Turbine.UI.Lotro.TextBox();
+    self.itemTimerText:SetParent(self);
+    self.itemTimerText:SetPosition(166, 608);
+    self.itemTimerText:SetSize(56, 24);
+    self.itemTimerText:SetMultiline(false);
+    self.itemTimerSave = Turbine.UI.Lotro.Button();
+    self.itemTimerSave:SetParent(self);
+    self.itemTimerSave:SetPosition(230, 608);
+    self.itemTimerSave:SetSize(96, 24);
+    self.itemTimerSave:SetText(L("editor.save"));
+    self.itemTimerSave.Click = function()
+        local sequence = self.settings.seqs[self.comboIndex];
+        local record = sequence and (self.selectedSlot == self.finisherSlot
+            and sequence.finisher or sequence.skills[self.selectedSlot]);
+        local duration = tonumber(self.itemTimerText:GetText());
+        if (not duration or duration < 1 or duration > 3600 or duration % 1 ~= 0) then
+            self.status:SetText(L("editor.itemCooldownInvalid"));
+            return;
+        end
+        if (record and record.shortcutType == Turbine.UI.Lotro.ShortcutType.Item) then
+            local name = record.itemName or record.skillName;
+            for _, cfg in ipairs(self.settings.seqs) do
+                local function UpdateItem(item)
+                    if (type(item) == "table" and item.shortcutType == record.shortcutType
+                        and (item.itemName or item.skillName) == name) then
+                        item.itemCooldown = duration;
+                    end
+                end
+                UpdateItem(cfg.finisher);
+                for _, item in pairs(cfg.skills) do
+                    UpdateItem(item);
+                end
+            end
+            self.save();
+            self:Refresh();
+            self.status:SetText(L("editor.itemTimerSaved"));
+        end
+    end;
+    self.itemReadyButton = Turbine.UI.Lotro.Button();
+    self.itemReadyButton:SetParent(self);
+    self.itemReadyButton:SetPosition(334, 608);
+    self.itemReadyButton:SetSize(146, 24);
+    self.itemReadyButton:SetText(L("editor.markReady"));
+    self.itemReadyButton.Click = function()
+        local sequence = self.settings.seqs[self.comboIndex];
+        local record = sequence and (self.selectedSlot == self.finisherSlot
+            and sequence.finisher or sequence.skills[self.selectedSlot]);
+        if (record and self.markItemReady) then
+            self.markItemReady(record);
+            self.status:SetText(L("editor.itemMarkedReady"));
+        end
+    end;
     self.shareButton = Turbine.UI.Lotro.Button();
     self.shareButton:SetParent(self);
     self.shareButton:SetPosition(230, 546);
@@ -606,8 +676,8 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
 
     self.status = Turbine.UI.Label();
     self.status:SetParent(self);
-    self.status:SetPosition(16, 624);
-    self.status:SetSize(466, 20);
+    self.status:SetPosition(16, 640);
+    self.status:SetSize(466, 44);
     self.status:SetText(L("editor.instructions"));
     self.status:SetForeColor(Turbine.UI.Color(0.9, 0.85, 0.65));
 
@@ -733,6 +803,7 @@ function ComboNextSequenceEditor:ApplyChain(combo, chain, selectPosition)
     local function flush(finisher, finisherEmpty, starter, shared, open)
         rules[#rules + 1] = {
             anyOrder = template.anyOrder;
+            triggerMode = template.triggerMode;
             starter = starter or nil;
             shared = shared or nil;
             open = open or nil;
@@ -1100,8 +1171,7 @@ function ComboNextSequenceEditor:Refresh()
         L(self.settings.showAllFinishers and "editor.on" or "editor.off")));
     self.multiFinisherToggle:SetEnabled(true);
     self.anyOrderButton:SetEnabled(sequence ~= nil);
-    self.anyOrderButton:SetText(L(sequence and sequence.anyOrder
-        and "editor.anyOrderOn" or "editor.anyOrderOff"));
+    self.anyOrderButton:SetText(L("editor.mode." .. ComboNextLogic.GetMode(sequence or {})));
     self.nameBox:SetEnabled(sequence ~= nil);
     self.nameBox:SetText(sequence and sequence.name or "");
     self.clearButton:SetEnabled(sequence ~= nil);
@@ -1158,11 +1228,21 @@ function ComboNextSequenceEditor:Refresh()
         and sequence.finisher or sequence.skills[self.selectedSlot]);
     local selectedTitle = self.selectedSlot == self.finisherSlot
         and L("editor.recommended") or L("editor.triggerSkill", self.selectedSlot);
+    local itemSelected = type(selected) == "table"
+        and selected.shortcutType == Turbine.UI.Lotro.ShortcutType.Item;
+    for _, control in ipairs({ self.itemTimerLabel, self.itemTimerText,
+        self.itemTimerSave, self.itemReadyButton }) do
+        control:SetVisible(itemSelected);
+    end
+    self.itemTimerText:SetText(itemSelected and tostring(selected.itemCooldown or "") or "");
+    self.itemReadyButton:SetEnabled(itemSelected and tonumber(selected.itemCooldown) ~= nil
+        and tonumber(selected.itemCooldown) >= 1);
     self.detail:SetText(sequence and (selectedTitle .. "\n"
         .. ((selected and selected.effectName and L("editor.effectDetail", (selected.effectFamily or selected.healthBelow) and selected.skillName or selected.effectName,
                 L(selected.effectScope == "target" and "editor.scopeTarget" or "editor.scopeSelf"),
                 L(selected.effectEvent == "lost" and "editor.eventLost" or "editor.eventGained")))
             or (selected and selected.skillName)
+            or (selected and selected.itemName)
             or (selected and (self.selectedSlot > self.maxSteps
                 and L("editor.dropActionbar") or L("editor.chooseCatalog")))
             or L("editor.emptySlot"))
