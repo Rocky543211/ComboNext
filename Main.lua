@@ -1788,39 +1788,64 @@ local function HookEffectList(list, scope)
     end);
 end
 
-local healthArmed = {};
-local function CheckHealthTriggers()
-    local ok, morale, maxMorale = pcall(function()
-        return player:GetMorale(), player:GetMaxMorale();
+local healthArmed = { self = {}; target = {} };
+local function GetMoralePercent(actor)
+    local ok, percent = pcall(function()
+        local morale = actor:GetMorale();
+        local maxMorale = actor.GetMaxMorale and actor:GetMaxMorale() or actor:GetBaseMaxMorale();
+        if (type(morale) == "number" and type(maxMorale) == "number" and maxMorale > 0) then
+            return morale / maxMorale * 100;
+        end
     end);
-    if (not ok or type(morale) ~= "number" or type(maxMorale) ~= "number" or maxMorale <= 0) then
-        return;
+    return ok and percent or nil;
+end
+
+local function CheckHealthTriggers(forceRearm)
+    local actors = { self = player };
+    local okTarget, target = pcall(function() return player:GetTarget(); end);
+    if (okTarget and target and target.GetMorale) then
+        actors.target = target;
     end
-    local percent = morale / maxMorale * 100;
-    local firedHealth = {};
+    local wanted = { self = {}; target = {} };
     for r = 1, #settings.seqs do
         for _, trigger in ipairs(GetTriggers(settings.seqs[r])) do
-            local threshold = tonumber(string.match(trigger.name, "^@self:gained:!hp<(%d+)$"));
-            if (threshold and not firedHealth[threshold]) then
-                firedHealth[threshold] = trigger.name;
+            local scope, threshold = string.match(trigger.name, "^@(%a+):gained:!hp<(%d+)$");
+            if (scope and wanted[scope]) then
+                wanted[scope][tonumber(threshold)] = trigger.name;
             end
         end
     end
     local actorName = player.GetName and player:GetName() or "You";
-    for threshold, triggerName in pairs(firedHealth) do
-        if (percent >= threshold) then
-            healthArmed[threshold] = true;
-        elseif (healthArmed[threshold] ~= false) then
-            healthArmed[threshold] = false;
-            HandleSkill(triggerName, actorName, nil);
+    for scope, thresholds in pairs(wanted) do
+        local percent = actors[scope] and GetMoralePercent(actors[scope]);
+        for threshold, triggerName in pairs(thresholds) do
+            if (not percent or percent >= threshold) then
+                healthArmed[scope][threshold] = percent and true or nil;
+            elseif (healthArmed[scope][threshold] ~= false) then
+                healthArmed[scope][threshold] = false;
+                HandleSkill(triggerName, actorName, nil);
+            end
         end
     end
 end
 
 pcall(function()
-    AddCallback(player, "MoraleChanged", CheckHealthTriggers);
-    AddCallback(player, "MaxMoraleChanged", CheckHealthTriggers);
+    AddCallback(player, "MoraleChanged", function() CheckHealthTriggers(); end);
+    AddCallback(player, "MaxMoraleChanged", function() CheckHealthTriggers(); end);
 end);
+
+local healthPoller = Turbine.UI.Control();
+healthPoller:SetSize(1, 1);
+healthPoller:SetVisible(false);
+local lastHealthPoll = 0;
+healthPoller.Update = function()
+    local now = Turbine.Engine.GetGameTime();
+    if (now - lastHealthPoll >= 0.5) then
+        lastHealthPoll = now;
+        CheckHealthTriggers();
+    end
+end;
+healthPoller:SetWantsUpdates(true);
 
 local function HookTargetEffects()
     pcall(function()
@@ -1835,6 +1860,7 @@ pcall(function()
     HookEffectList(player:GetEffects(), "self");
     AddCallback(player, "TargetChanged", function()
         lastTargetChangeAt = Turbine.Engine.GetGameTime();
+        healthArmed.target = {};
         HookTargetEffects();
     end);
     HookTargetEffects();

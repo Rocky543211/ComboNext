@@ -938,7 +938,7 @@ function ComboNextSequenceEditor:Assign(skill, slotIndex)
             effectName = skill.effectName;
             effectFamily = skill.effectFamily;
             healthBelow = skill.healthBelow;
-            effectScope = skill.healthBelow and "self" or self.effectScope;
+            effectScope = self.effectScope;
             effectEvent = skill.healthBelow and "gained" or self.effectEvent;
             icon = skill.icon;
         };

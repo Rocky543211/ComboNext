@@ -6,6 +6,10 @@ Notable changes to ComboNext are documented here.
 
 - No unreleased changes yet.
 
+## [1.37] - 2026-10-25
+
+- "Health below N%" triggers now work on your target: set the "Effect on" button to target before choosing the trigger. Target health is checked twice a second and re-arms when the target changes.
+
 ## [1.36] - 2026-10-25
 
 - Added effect family triggers (Wound, Poison, Disease, Fear, Corruption, Cry, Song, Elemental, Physical, Tactical) alongside exact-name effect triggers.
