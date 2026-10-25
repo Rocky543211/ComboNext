@@ -295,7 +295,7 @@ local share = ComboNextShareWindow(ui.settings, function() end, function() ui.Re
 ui.settings.seqs[1].triggerMode = "anyConditions";
 share:Export(false);
 local exported = share.box:GetText();
-check(string.sub(exported, 1, 4) == "CN3!", "new share format is versioned");
+check(string.sub(exported, 1, 4) == "CN4!", "new share format is versioned");
 share:Import(true);
 check(ui.settings.seqs[1].triggerMode == "allConditions", "share migrates legacy current OR mode");
 check(ui.settings.seqs[1].finisher.itemCooldown == 5, "share preserves item duration");
@@ -660,4 +660,313 @@ output = {};
 command:Execute("cn", "verify");
 check(not table.concat(output, "\n"):find("VERIFY FAIL", 1, true),
     "mixed connector rules pass configuration verification");
+local classTriggers = ComboNextClassTriggers;
+Turbine.Gameplay.Class = { Hunter = 1; Champion = 2; Beorning = 3; RuneKeeper = 4;
+    Mariner = 5; Warden = 6; Brawler = 7; Guardian = 8; Minstrel = 9 };
+Turbine.Gameplay.Attributes = {
+    HunterStance = { Endurance = 1; Precision = 2; Strength = 3 };
+    WardenStance = { Assailment = 1; Determination = 2 };
+};
+player.GetClass = function(self) return self.class; end;
+player.GetClassAttributes = function(self) return self.attributes; end;
+local attributes;
+local function asClass(name, values)
+    player.class = Turbine.Gameplay.Class[name];
+    attributes = values or {};
+    player.attributes = attributes;
+    return attributes;
+end
+for _, case in ipairs({
+    { "Hunter", "focus", "GetFocus", 9 },
+    { "Champion", "fervour", "GetFervor", 5 },
+    { "Beorning", "wrath", "GetWrath", 100 },
+    { "Mariner", "balance", "GetBalance", 50 },
+}) do
+    asClass(case[1], { [case[3]] = function() return case[4]; end });
+    local record = classTriggers.Record(case[2], "ge", case[4]);
+    check(classTriggers.Evaluate(record, player, "en") == true, case[2] .. " direct resource");
+    for _, comparison in ipairs({ "lt", "le", "eq", "ge", "gt" }) do
+        record = classTriggers.Record(case[2], comparison, case[4]);
+        local expected = comparison == "le" or comparison == "eq" or comparison == "ge";
+        check(classTriggers.Evaluate(record, player, "en") == expected,
+            case[2] .. " exact comparison boundary " .. comparison);
+    end
+    attributes[case[3]] = function() return nil; end;
+    check(classTriggers.Evaluate(record, player, "en") == nil, case[2] .. " nil stays unknown");
+    attributes[case[3]] = function() error("unreadable"); end;
+    local value, reason = classTriggers.Evaluate(record, player, "en");
+    check(value == nil and reason:find("unreadable", 1, true), case[2] .. " read error exposed");
+end
+for _, value in ipairs({ 1, 10, 19 }) do
+    asClass("RuneKeeper", { GetAttunement = function() return value; end });
+    check(classTriggers.Read(classTriggers.Record("battle", "ge", 0), player, "en")
+        == math.max(0, 10 - value), "battle attunement mapping " .. value);
+    check(classTriggers.Read(classTriggers.Record("healing", "ge", 0), player, "en")
+        == math.max(0, value - 10), "healing attunement mapping " .. value);
+end
+for _, value in ipairs({ 0, 20, 9.5 }) do
+    asClass("RuneKeeper", { GetAttunement = function() return value; end });
+    for _, key in ipairs({ "battle", "healing" }) do
+        check(classTriggers.Read(classTriggers.Record(key, "eq", 0), player, "en") == nil,
+            "invalid raw attunement is not guessed neutral " .. key .. "/" .. value);
+    end
+end
+for _, case in ipairs({ { "Beorning", "bear", "IsInBearForm" },
+    { "RuneKeeper", "charged", "IsCharged" } }) do
+    for _, active in ipairs({ false, true }) do
+        asClass(case[1], { [case[3]] = function() return active; end });
+        check(classTriggers.Evaluate(classTriggers.Record(case[2], "eq", 1), player, "en") == active,
+            case[2] .. " boolean state " .. tostring(active));
+        check(classTriggers.Evaluate(classTriggers.Record(case[2], "eq", 0), player, "en") == not active,
+            case[2] .. " inverted state " .. tostring(active));
+    end
+end
+asClass("Warden", { GetMaxGambitCount = function() return 5; end;
+    GetGambit = function(_, slot) return slot <= 3 and slot or 0; end });
+for slot = 1, 5 do
+    local expected = slot <= 3 and slot or 0;
+    check(classTriggers.Evaluate(classTriggers.Record("gambit" .. slot, "eq", expected),
+        player, "en") == true, "gambit slot reader " .. slot);
+end
+attributes.GetGambit = function() return 4; end;
+check(classTriggers.Evaluate(classTriggers.Record("gambit1", "eq", 0), player, "en") == nil,
+    "unverified gambit builder is not empty");
+attributes.GetMaxGambitCount = function() return 3; end;
+check(classTriggers.Evaluate(classTriggers.Record("gambit5", "eq", 0), player, "en") == nil,
+    "unavailable gambit slot is not empty");
+for _, case in ipairs({ { "Hunter", "Precision", 2 }, { "Warden", "Assailment", 1 },
+    { "Minstrel", "Dissonance", 1 } }) do
+    asClass(case[1], { GetStance = function() return case[3]; end });
+    local record = classTriggers.Record(case[1] .. "_" .. case[2], "eq", 1);
+    check(classTriggers.Evaluate(record, player, "en") == nil, "unconfirmed stance unknown " .. case[1]);
+    check(classTriggers.Evaluate(record, player, "en", { [attributes] = true }) == true,
+        "confirmed stance " .. case[1]);
+    attributes.GetStance = function() return 99; end;
+    check(classTriggers.Evaluate(record, player, "en", { [attributes] = true }) == nil,
+        "invalid stance unknown " .. case[1]);
+end
+for _, case in ipairs({
+    { "Brawler", "mettle", "Battle Flow 9", 9, "en" },
+    { "Brawler", "mettle", "Kampffluss (Stufe 3)", 3, "de" },
+    { "Brawler", "mettle", "Flot de Bataille 5", 5, "fr" },
+    { "Guardian", "fortification", "Improved Fortification V", 5, "en" },
+    { "Warden", "technique", "Advanced Technique IV", 4, "en" },
+}) do
+    asClass(case[1]);
+    effectValues[1] = wound(case[3]);
+    local record = classTriggers.Record(case[2], "eq", case[4]);
+    check(classTriggers.Evaluate(record, player, case[5]) == true, "effect resource " .. case[3]);
+    effectValues[1] = nil;
+    check(classTriggers.Read(record, player, case[5]) == 0, "absent supported effect is zero " .. case[3]);
+    if (case[2] ~= "mettle") then
+        check(classTriggers.Read(record, player, "de") == nil,
+            "unverified localized effect is unknown, not zero " .. case[2]);
+    end
+end
+asClass("Hunter", { GetFocus = function(self) return self.focus; end;
+    focus = 0; GetStance = function(self) return self.stance; end; stance = 2 });
+local focus = classTriggers.Record("focus", "ge", 3);
+for _, invalid in ipairs({
+    { classTrigger = "missing"; classCompare = "eq"; classValue = 1 },
+    { classTrigger = "focus"; classCompare = "bad"; classValue = 1 },
+    { classTrigger = "focus"; classCompare = "ge"; classValue = 10 },
+    { classTrigger = "focus"; classCompare = "ge"; classValue = -1 },
+    { classTrigger = "focus"; classCompare = "eq"; classValue = 1.5 },
+    { classTrigger = "bear"; classCompare = "gt"; classValue = 1 },
+    { classTrigger = "bear"; classCompare = "eq"; classValue = 2 },
+}) do
+    check(not classTriggers.Validate(invalid), "reject invalid class configuration");
+end
+local oldClass = player.class;
+player.class = Turbine.Gameplay.Class.Champion;
+check(classTriggers.Evaluate(focus, player, "en") == nil, "wrong class is unknown");
+player.class = oldClass;
+local readFocus = attributes.GetFocus;
+attributes.GetFocus = nil;
+check(classTriggers.Evaluate(focus, player, "en") == nil, "absent class resource API stays unknown");
+attributes.GetFocus = readFocus;
+configure("allConditions", { focus, health("self", 50) });
+player.morale = 30;
+attributes.focus = 0;
+tick();
+tick();
+tick();
+tick();
+check(not ui.recommendations[1], "class condition AND health needs enough focus");
+check(type(attributes.FocusChanged) == "function" and attributes.WrathChanged == nil,
+    "only supported class-specific event listeners installed");
+attributes.focus = 3;
+attributes:FocusChanged();
+check(ui.recommendations[1], "focus event immediately refreshes mixed live conditions");
+attributes.focus = 2;
+tick();
+check(not ui.recommendations[1], "polling fallback notices class resource changes");
+ui.settings.seqs[1].triggerJoins = { [2] = "OR" };
+tick();
+check(ui.recommendations[1], "class condition supports individual OR");
+
+configure("ordered", { focus, focus });
+attributes.focus = 0;
+attributes:FocusChanged();
+attributes.focus = 3;
+attributes:FocusChanged();
+check(ui.states[1].progress == 1 and not ui.recommendations[1], "one focus change advances one event step");
+attributes:FocusChanged();
+tick();
+check(ui.states[1].progress == 1, "continuously true class predicate does not fire again");
+attributes.GetFocus = nil;
+tick();
+check(ui.status:GetText():find("unavailable", 1, true), "event progress explains unavailable class APIs");
+attributes.GetFocus = readFocus;
+attributes:FocusChanged();
+check(ui.states[1].progress == 1, "unavailable-then-readable does not invent a new resource crossing");
+attributes.focus = 2;
+attributes:FocusChanged();
+attributes.focus = 3;
+attributes:FocusChanged();
+check(ui.recommendations[1], "false-to-true class comparison re-arms");
+configure("any", { focus, classTriggers.Record("focus", "ge", 5) });
+attributes.focus = 0;
+attributes:FocusChanged();
+attributes.focus = 9;
+attributes:FocusChanged();
+check(ui.states[1].progress == 1, "simultaneous class thresholds are one physical event");
+
+configure("allConditions", { focus });
+attributes.focus = 9;
+tick();
+check(ui.recommendations[1], "class-only live condition recommends");
+chat("Heal");
+tick();
+check(not ui.recommendations[1], "class-only condition consumption waits for reset");
+attributes.focus = 0;
+attributes:FocusChanged();
+attributes.focus = 5;
+attributes:FocusChanged();
+check(ui.recommendations[1], "class-only live condition re-arms after becoming false");
+
+local stance = classTriggers.Record("Hunter_Precision", "eq", 1);
+configure("allConditions", { stance });
+tick();
+check(not ui.recommendations[1], "stance starts unknown");
+attributes:StanceChanged();
+check(ui.recommendations[1], "explicit stance event confirms reading");
+for _ = 1, 5 do tick(); end
+check(ui.recommendations[1], "unchanged trained skill list does not invalidate confirmed stance");
+Turbine.Chat:Received({ ChatType = 1;
+    Message = "You have acquired the Class Specialization Bonus Trait test." });
+tick();
+check(not ui.recommendations[1], "trait change invalidates unreliable stance");
+attributes:StanceChanged();
+check(ui.recommendations[1], "stance can be confirmed again after trait change");
+
+configure("allConditions", { focus });
+editor:EnsureGroups();
+editor:SelectSlot(1, 1);
+check(editor.classValueSave:IsVisible(), "class configuration row visible for class triggers");
+editor.classCompareButton:Click();
+editor.classValueText:SetText("6");
+editor.classValueSave:Click();
+check(ui.settings.seqs[1].skills[1].classValue == 6
+    and ui.settings.seqs[1].skills[1].classCompare == "gt", "editor saves comparison and value");
+check(focus.classValue == 3 and focus.classCompare == "ge", "class editing does not mutate catalog prototypes");
+editor.classValueText:SetText("10");
+editor.classValueSave:Click();
+check(ui.settings.seqs[1].skills[1].classValue == 6, "invalid editor value preserves saved condition");
+editor:SelectSlot(1, editor.finisherSlot);
+local finisherBefore = ui.settings.seqs[1].finisher;
+editor:Assign(focus);
+check(ui.settings.seqs[1].finisher == finisherBefore, "class trigger cannot be assigned as a finisher");
+editor:SelectSlot(1, 1);
+editor:SwitchRole("F");
+check(ui.settings.seqs[1].skills[1].classTrigger == "focus", "class trigger cannot be converted to finisher");
+for _, className in ipairs({ "Hunter", "Champion", "Beorning", "RuneKeeper", "Mariner",
+    "Brawler", "Guardian", "Warden", "Minstrel" }) do
+    local catalog = editor.getSkills(className, "");
+    check(catalog[1].classTrigger ~= nil, "class conditions live within " .. className .. " catalog");
+    for _, record in ipairs(classTriggers.Catalog(className)) do
+        check(classTriggers.Validate(record), "catalog class condition valid");
+        configure("allConditions", { record });
+        editor:EnsureGroups();
+        share:Export(false);
+        check(share.box:GetText():sub(1, 4) == "CN4!", "class record uses CN4 sharing");
+        share:Import(true);
+        local imported = ui.settings.seqs[1].skills[1];
+        check(imported.classTrigger == record.classTrigger and imported.classCompare == record.classCompare
+            and imported.classValue == record.classValue, "class condition share round trip");
+    end
+end
+for _, record in ipairs(editor.getSkills(ComboNextConstants.effectsClass, "")) do
+    check(not record.classTrigger, "class conditions are not under Effects");
+end
+check(#classTriggers.Catalog("Burglar") == 0 and #classTriggers.Catalog("Captain") == 0
+    and #classTriggers.Catalog("LoreMaster") == 0, "no invented class resources");
+check(editor.getSkills("Hunter", "focus")[1].classTrigger == "focus", "class condition catalog searchable");
+for _, token in ipairs({ "C:focus:ge:10", "C:focus:bad:3", "C:missing:eq:1",
+    "C:focus:ge:1.5", "C:bear:eq:2", "C:focus:ge:3:extra" }) do
+    local previous = ui.settings.seqs;
+    share.box:SetText("CN4!Bad|2:allConditions:A|C:focus:ge:1," .. token .. "|S:heal:Heal");
+    share:Import(true);
+    check(ui.settings.seqs == previous, "invalid shared class condition rejected atomically " .. token);
+end
+for _, header in ipairs({ "CN1", "CN2", "CN3" }) do
+    local metadata = header == "CN1" and "1" or header == "CN2" and "1:ordered" or "1:ordered:";
+    local previous = ui.settings.seqs;
+    share.box:SetText(header .. "!Bad|" .. metadata .. "|C:focus:ge:3|I:potion:Health%20Potion");
+    share:Import(true);
+    check(ui.settings.seqs == previous, "legacy format cannot smuggle new class record " .. header);
+end
+local previous = ui.settings.seqs;
+share.box:SetText("CN4!Bad|1:ordered:|C:focus:ge:3|C:focus:ge:3");
+share:Import(true);
+check(ui.settings.seqs == previous, "import rejects class trigger as finisher");
+share.box:SetText("CN3!Legacy|1:ordered:|E:SG:%23Poison:|I:potion:Health%20Potion");
+share:Import(true);
+check(ui.settings.seqs[1].skills[1].effectName == "#Poison", "CN3 remains importable");
+configure("allConditions", { focus });
+output = {};
+command:Execute("cn", "verify catalog");
+log = table.concat(output, "\n");
+check(not log:find("VERIFY FAIL", 1, true), "class configuration and catalog verification: " .. log);
+player.class = Turbine.Gameplay.Class.Champion;
+output = {};
+command:Execute("cn", "verify");
+check(table.concat(output, "\n"):find("VERIFY NOT CHECKED: class trigger API coverage", 1, true),
+    "wrong-class resource verification honestly reports NOT CHECKED");
+local oldAttributes = attributes;
+asClass("Hunter", { focus = 0; GetFocus = readFocus });
+configure("ordered", { focus });
+for _ = 1, 4 do tick(); end
+oldAttributes.focus = 9;
+oldAttributes:FocusChanged();
+check(not ui.recommendations[1], "stale attribute callbacks cannot fire class triggers");
+attributes.focus = 3;
+attributes:FocusChanged();
+check(ui.recommendations[1], "replacement class attributes receive listeners");
+
+asClass("Brawler");
+configure("ordered", { effect("Battle Flow 3"), classTriggers.Record("mettle", "ge", 3) });
+effectValues[1] = nil;
+tick();
+effectValues[1] = wound("Battle Flow 3");
+effects:EffectAdded({ Index = 1 });
+check(ui.states[1].progress == 1 and not ui.recommendations[1],
+    "one effect cannot advance both its exact-effect and class-stack steps");
+configure("allConditions", { classTriggers.Record("mettle", "ge", 3) });
+tick();
+check(ui.recommendations[1], "effect-derived class condition reads current stacks");
+local removedEffect = effectValues[1];
+effectValues[1] = nil;
+effects:EffectRemoved({ Effect = removedEffect });
+check(not ui.recommendations[1], "effect removal immediately refreshes class conditions");
+effectValues[1] = wound("Battle Flow 100");
+check(classTriggers.Read(classTriggers.Record("mettle", "ge", 1), player, "en") == nil,
+    "unsupported effect stack count is unknown");
+effectValues[1] = nil;
+
+configure("ordered", { { skillName = "Invalid"; classTrigger = "missing" } });
+ui.settings.alwaysFirstFinisher = true;
+tick();
+check(not ui.recommendations[1], "invalid class trigger cannot become a starter recommendation");
+ui.settings.alwaysFirstFinisher = false;
 print(tostring(count) .. " ComboNext assertions passed.");

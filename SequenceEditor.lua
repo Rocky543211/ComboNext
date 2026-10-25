@@ -4,6 +4,7 @@ import "Turbine.UI.Lotro";
 import "ComboNext.Constants";
 import "ComboNext.ComboLogic";
 import "ComboNext.Localization";
+import "ComboNext.ClassTriggers";
 
 local L = ComboNextL;
 
@@ -694,6 +695,54 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
             self.status:SetText(L("editor.itemMarkedReady"));
         end
     end;
+    self.classValueLabel = Turbine.UI.Label();
+    self.classValueLabel:SetParent(self);
+    self.classValueLabel:SetPosition(16, 608);
+    self.classValueLabel:SetSize(180, 24);
+    self.classValueLabel:SetText(L("class.configure"));
+    self.classValueLabel:SetForeColor(Turbine.UI.Color(0.95, 0.95, 0.95));
+    self.classCompareButton = Turbine.UI.Lotro.Button();
+    self.classCompareButton:SetParent(self);
+    self.classCompareButton:SetPosition(200, 608);
+    self.classCompareButton:SetSize(68, 24);
+    self.classCompare = "ge";
+    self.classCompareButton.Click = function()
+        local sequence = self.settings.seqs[self.comboIndex];
+        local record = sequence and sequence.skills[self.selectedSlot];
+        local definition = record and ComboNextClassTriggers.Definition(record.classTrigger);
+        if (not definition or definition.boolean) then
+            return;
+        end
+        local choices = { "lt", "le", "eq", "ge", "gt" };
+        for index, choice in ipairs(choices) do
+            if (choice == self.classCompare) then
+                self.classCompare = choices[index % #choices + 1];
+                break;
+            end
+        end
+        self.classCompareButton:SetText(L("class.compare." .. self.classCompare));
+    end;
+    self.classValueText = Turbine.UI.Lotro.TextBox();
+    self.classValueText:SetParent(self);
+    self.classValueText:SetPosition(276, 608);
+    self.classValueText:SetSize(66, 24);
+    self.classValueText:SetMultiline(false);
+    self.classValueSave = Turbine.UI.Lotro.Button();
+    self.classValueSave:SetParent(self);
+    self.classValueSave:SetPosition(350, 608);
+    self.classValueSave:SetSize(130, 24);
+    self.classValueSave:SetText(L("editor.save"));
+    self.classValueSave.Click = function()
+        local sequence = self.settings.seqs[self.comboIndex];
+        local old = sequence and sequence.skills[self.selectedSlot];
+        local record = old and ComboNextClassTriggers.Record(old.classTrigger,
+            self.classCompare, tonumber(self.classValueText:GetText()));
+        if (not record) then
+            self.status:SetText(L("class.invalidValue"));
+            return;
+        end
+        self:Assign(record);
+    end;
     self.shareButton = Turbine.UI.Lotro.Button();
     self.shareButton:SetParent(self);
     self.shareButton:SetPosition(230, 546);
@@ -956,7 +1005,7 @@ function ComboNextSequenceEditor:SwitchRole()
         end
         cell.role = "F";
     else
-        if (record and not (record.chatPattern or record.effectName
+        if (record and not (record.chatPattern or record.effectName or record.classTrigger
             or (record.shortcutType == Turbine.UI.Lotro.ShortcutType.Skill and record.skillName)
             or (record.shortcutType == Turbine.UI.Lotro.ShortcutType.Item and record.itemName))) then
             self.status:SetText(L("editor.triggerUnknown"));
@@ -1055,7 +1104,13 @@ function ComboNextSequenceEditor:SelectCombo(comboIndex)
 end
 
 function ComboNextSequenceEditor:Assign(skill, slotIndex)
-    if (skill and skill.effectName) then
+    if (skill and skill.classTrigger) then
+        skill = ComboNextClassTriggers.Record(skill.classTrigger, skill.classCompare, skill.classValue);
+        if (not skill) then
+            self.status:SetText(L("class.invalid"));
+            return;
+        end
+    elseif (skill and skill.effectName) then
         skill = {
             skillName = (skill.effectFamily or skill.healthBelow) and skill.skillName or skill.effectName;
             effectName = skill.effectName;
@@ -1296,6 +1351,21 @@ function ComboNextSequenceEditor:Refresh()
     self.itemTimerText:SetText(itemSelected and tostring(selected.itemCooldown or "") or "");
     self.itemReadyButton:SetEnabled(itemSelected and tonumber(selected.itemCooldown) ~= nil
         and tonumber(selected.itemCooldown) >= 1);
+    local classSelected = type(selected) == "table" and selected.classTrigger ~= nil
+        and self.selectedSlot ~= self.finisherSlot;
+    for _, control in ipairs({ self.classValueLabel, self.classCompareButton,
+        self.classValueText, self.classValueSave }) do
+        control:SetVisible(classSelected);
+    end
+    if (classSelected) then
+        self.classCompare = selected.classCompare;
+        self.classCompareButton:SetText(L("class.compare." .. self.classCompare));
+        local definition = ComboNextClassTriggers.Definition(selected.classTrigger);
+        self.classCompareButton:SetEnabled(definition ~= nil and not definition.boolean);
+        self.classValueText:SetText(tostring(selected.classValue));
+        self.classValueLabel:SetText(definition and L("class.range",
+            definition.min or 0, definition.max or 1) or L("class.configure"));
+    end
     self.detail:SetText(sequence and (selectedTitle .. "\n"
         .. ((selected and selected.effectName and L("editor.effectDetail", (selected.effectFamily or selected.healthBelow) and selected.skillName or selected.effectName,
                 L(selected.effectScope == "target" and "editor.scopeTarget" or "editor.scopeSelf"),
@@ -1330,6 +1400,12 @@ function ComboNextSequenceEditor:Refresh()
     end
     if (effectsMode and #(self.searchBox:GetText() or "") < 2) then
         self.status:SetText(L("editor.effectHint"));
+    end
+    if (classSelected) then
+        local definition = ComboNextClassTriggers.Definition(selected.classTrigger);
+        self.status:SetText(L(definition and definition.boolean and "class.hint.boolean"
+            or definition and definition.slot and "class.hint.gambit"
+            or selected.classTrigger == "balance" and "class.hint.balance" or "class.hint.numeric"));
     end
 end
 

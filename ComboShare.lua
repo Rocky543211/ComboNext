@@ -3,10 +3,11 @@ import "Turbine.UI";
 import "Turbine.UI.Lotro";
 import "ComboNext.Constants";
 import "ComboNext.ComboLogic";
+import "ComboNext.ClassTriggers";
 import "ComboNext.Localization";
 
 local L = ComboNextL;
-local HEADER = "CN3";
+local HEADER = "CN4";
 local MAX_IMPORT_COMBOS = 60;
 
 local function Escape(text)
@@ -37,6 +38,10 @@ local function Split(text, separator)
 end
 
 local function EncodeRecord(record, findSkill)
+    if (type(record) == "table" and record.classTrigger) then
+        return "C:" .. Escape(record.classTrigger) .. ":" .. Escape(record.classCompare)
+            .. ":" .. tostring(record.classValue);
+    end
     if (type(record) == "table" and type(record.effectName) == "string") then
         return "E:" .. (record.effectScope == "target" and "T" or "S")
             .. (record.effectEvent == "lost" and "L" or "G") .. ":"
@@ -190,6 +195,13 @@ function ComboNextShareWindow:DecodeRecord(token)
         return nil;
     end
     local fields = Split(token, ":");
+    if (fields[1] == "C") then
+        if (#fields ~= 4) then
+            return false;
+        end
+        return ComboNextClassTriggers.Record(Unescape(fields[2]),
+            Unescape(fields[3]), tonumber(fields[4])) or false;
+    end
     if (fields[1] == "P") then
         local phrase = fields[2] and Unescape(fields[2]);
         if (not phrase or phrase == "") then
@@ -266,7 +278,8 @@ end
 function ComboNextShareWindow:Import(replace)
     local text = string.gsub(self.box:GetText() or "", "%s+", "");
     local parts = Split(text, "!");
-    if ((parts[1] ~= HEADER and parts[1] ~= "CN2" and parts[1] ~= "CN1") or #parts < 2) then
+    local withJoins = parts[1] == HEADER or parts[1] == "CN3";
+    if ((not withJoins and parts[1] ~= "CN2" and parts[1] ~= "CN1") or #parts < 2) then
         self.status:SetText(L("share.invalid"));
         return;
     end
@@ -282,15 +295,15 @@ function ComboNextShareWindow:Import(replace)
         local groupRules = {};
         for base = 2, #fields, 3 do
             local stepText, mode, joins;
-            if (parts[1] == HEADER or parts[1] == "CN2") then
-                if (parts[1] == HEADER) then
+            if (withJoins or parts[1] == "CN2") then
+                if (withJoins) then
                     stepText, mode, joins = string.match(fields[base] or "", "^(%d+):(%a+):([AO]*)$");
                 else
                     stepText, mode = string.match(fields[base] or "", "^(%d+):(%a+)$");
                 end
                 if (not stepText or (mode ~= "ordered" and mode ~= "any" and mode ~= "or"
                     and mode ~= "allConditions" and mode ~= "anyConditions")
-                    or (parts[1] == HEADER and (mode == "or" or mode == "anyConditions"
+                    or (withJoins and (mode == "or" or mode == "anyConditions"
                         or tonumber(stepText) < 1 or tonumber(stepText) > maxSteps
                         or #joins ~= tonumber(stepText) - 1))) then
                     self.status:SetText(L("share.invalid"));
@@ -319,11 +332,15 @@ function ComboNextShareWindow:Import(replace)
             local last = 0;
             for step = 1, math.min(steps, #tokens) do
                 local record = self:DecodeRecord(tokens[step]);
+                if (record and record.classTrigger and parts[1] ~= HEADER) then
+                    self.status:SetText(L("share.invalid"));
+                    return;
+                end
                 if (record) then
                     cfg.skills[step] = record;
                     last = step;
                 elseif (record == false) then
-                    if (parts[1] == HEADER) then
+                    if (withJoins) then
                         self.status:SetText(L("share.invalid"));
                         return;
                     end
@@ -331,6 +348,10 @@ function ComboNextShareWindow:Import(replace)
                 end
             end
             local finisher = self:DecodeRecord(fields[base + 2]);
+            if (type(finisher) == "table" and finisher.classTrigger) then
+                self.status:SetText(L("share.invalid"));
+                return;
+            end
             if (finisher) then
                 cfg.finisher = finisher;
             elseif (finisher == false) then

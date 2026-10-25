@@ -5,6 +5,7 @@ import "Turbine.UI.Lotro";
 import "ComboNext.Constants";
 import "ComboNext.ComboLogic";
 import "ComboNext.Localization";
+import "ComboNext.ClassTriggers";
 import "ComboNext.OptionsPanel";
 import "ComboNext.SequenceEditor";
 import "ComboNext.ComboShare";
@@ -62,6 +63,9 @@ local RefreshConditions;
 local GetFinisherReadiness;
 local RecordItemUse;
 local itemCooldowns = {};
+local CheckClassTriggers;
+local confirmedStance = setmetatable({}, { __mode = "k" });
+local classTriggerPrevious = {};
 
 local UI_THEMES = {
     gold = {
@@ -229,6 +233,11 @@ for i = 1, #settings.seqs do
         cfg.stepCount = lastConfiguredStep;
     end
     ComboNextLogic.NormalizeRule(cfg);
+    for _, record in pairs(cfg.skills) do
+        if (type(record) == "table" and ComboNextClassTriggers.Validate(record)) then
+            record.skillName = ComboNextClassTriggers.Label(record);
+        end
+    end
 end
 if (#settings.seqs == 2
     and settings.seqs[1].name == "A" and settings.seqs[2].name == "B"
@@ -511,6 +520,11 @@ local function GetClassSkills(className, search)
 
     local query = string.lower(search or "");
     local result = {};
+    for _, record in ipairs(ComboNextClassTriggers.Catalog(className)) do
+        if (query == "" or string.find(string.lower(record.skillName), query, 1, true)) then
+            result[#result + 1] = record;
+        end
+    end
     for _, skill in ipairs(localizedSkills) do
         if (query == "" or string.find(skill.normalizedName, query, 1, true)) then
             table.insert(result, skill);
@@ -621,6 +635,9 @@ local function GetTriggers(cfg)
             end
             if (isEffect) then
                 name = ComboNextEffectKey(value.effectScope, value.effectEvent, value.effectName);
+            elseif (type(value) == "table" and value.classTrigger) then
+                name = ComboNextClassTriggers.Validate(value) and ComboNextClassTriggers.Key(value)
+                    or "@class:invalid";
             end
             local chatPattern = type(value) == "table"
                 and type(value.chatPattern) == "string" and value.chatPattern or nil;
@@ -635,7 +652,8 @@ local function GetTriggers(cfg)
                 name = name;
                 chatPattern = chatPattern;
                 speech = type(value) == "table" and value.speech == true or nil;
-                icon = (not isEffect) and type(value) == "table" and value.icon or nil;
+                icon = (not isEffect) and type(value) == "table"
+                    and not value.classTrigger and value.icon or nil;
                 effectIcon = isEffect and tonumber(value.icon) or nil;
                 join = ComboNextLogic.GetJoin(cfg, i);
             });
@@ -1167,6 +1185,7 @@ end
 
 function ui.ResetProgress()
     ui.recommendations = {};
+    classTriggerPrevious = {};
     for r = 1, #settings.seqs do
         if (not ui.states[r]) then
             ui.states[r] = NewProgressState();
@@ -1178,6 +1197,7 @@ function ui.ResetProgress()
         ui.states[r].lastProgressAt = nil;
         ui.states[r].eventTimes = {};
         ui.states[r].conditions = nil;
+        ui.states[r].classDetails = nil;
         ui.states[r].conditionConsumed = nil;
         ui.states[r].branches = nil;
     end
@@ -1255,6 +1275,10 @@ local function GetProgressText(index)
             local label = type(trigger.value) == "table"
                 and (trigger.value.skillName or trigger.value.itemName);
             label = label or trigger.name;
+            if (type(trigger.value) == "table" and trigger.value.classTrigger
+                and state.classDetails and state.classDetails[trigger.name]) then
+                label = state.classDetails[trigger.name];
+            end
             if (ComboNextLogic.IsCurrent(triggers.mode)) then
                 if (not condition or condition.satisfied ~= true) then
                     waiting[#waiting + 1] = condition and condition.detail or label;
@@ -1657,7 +1681,8 @@ HandleSkill = function(skillName, actorName, skillIcon, aliases)
         if (ComboNextLogic.IsCurrent(triggers.mode)) then
             state.eventTimes = state.eventTimes or {};
             for index, trigger in ipairs(triggers) do
-                if (not (type(trigger.value) == "table" and trigger.value.effectName)
+                if (not (type(trigger.value) == "table"
+                    and (trigger.value.effectName or trigger.value.classTrigger))
                     and TriggerMatchesSkill(trigger, skillName, skillIcon, aliases)) then
                     state.eventTimes[index] = now;
                 end
@@ -1690,6 +1715,7 @@ local player = Turbine.Gameplay.LocalPlayer.GetInstance();
 local lastLocalSkillAt = {};
 local watchedSkills = {};
 local trainedByName = {};
+local trainedFingerprint;
 local function OnLocalSkillActivated(observedSkillName, icon)
     local now = Turbine.Engine.GetGameTime();
     local eventKey = icon or observedSkillName;
@@ -1745,12 +1771,14 @@ local function BindTrainedSkillListeners()
     end
     local skillCount = skills:GetCount();
     trainedByName = {};
+    local names = {};
     for i = 1, skillCount do
         local skill = skills:GetItem(i);
         if (skill) then
             local skillInfo = skill:GetSkillInfo();
             local skillName = skillInfo and skillInfo:GetName();
             if (type(skillName) == "string" and skillName ~= "") then
+                names[#names + 1] = skillName;
                 trainedByName[NormalizeSkillName(skillName)] = skill;
                 if (not watchedSkills[skill]) then
                     watchedSkills[skill] = true;
@@ -1771,6 +1799,14 @@ local function BindTrainedSkillListeners()
             end
         end
     end
+    table.sort(names);
+    local fingerprint = table.concat(names, "\n");
+    if (trainedFingerprint and trainedFingerprint ~= fingerprint) then
+        for attributes in pairs(confirmedStance) do
+            confirmedStance[attributes] = nil;
+        end
+    end
+    trainedFingerprint = fingerprint;
 end
 BindTrainedSkillListeners();
 
@@ -1900,8 +1936,16 @@ local function OnEffectEvent(scope, event, effect)
         end
     end
     local actorName = player and player.GetName and player:GetName() or "You";
+    if (CheckClassTriggers) then
+        CheckClassTriggers(fired);
+    end
     if (next(fired)) then
         HandleSkill(key, actorName, nil, fired);
+    end
+    if (RefreshConditions) then
+        RefreshConditions();
+        UpdateActiveSequence();
+        ui.UpdateDisplay();
     end
 end
 
@@ -1960,6 +2004,9 @@ end
 
 local function GetConditionStatus(trigger, actors, now, state, index)
     local record = trigger.value;
+    if (type(record) == "table" and record.classTrigger) then
+        return ComboNextClassTriggers.Evaluate(record, player, GetSkillLocale(), confirmedStance);
+    end
     if (type(record) ~= "table" or not record.effectName) then
         local eventTime = state.eventTimes and state.eventTimes[index];
         return eventTime ~= nil and now - eventTime <= settings.resetSeconds,
@@ -2041,6 +2088,71 @@ RefreshConditions = function()
     end
 end
 
+CheckClassTriggers = function(aliases)
+    local nextValues, details, fired = {}, {}, aliases or {};
+    local first;
+    for ruleIndex, cfg in ipairs(settings.seqs) do
+        local triggers = GetTriggers(cfg);
+        if (not ComboNextLogic.IsCurrent(triggers.mode)) then
+            local state = ui.states[ruleIndex];
+            state.classDetails = {};
+            for _, trigger in ipairs(triggers) do
+                local record = trigger.value;
+                if (type(record) == "table" and ComboNextClassTriggers.Validate(record)
+                    and details[trigger.name] == nil) then
+                    local satisfied, detail = ComboNextClassTriggers.Evaluate(record, player,
+                        GetSkillLocale(), confirmedStance);
+                    if (satisfied == nil) then
+                        nextValues[trigger.name] = classTriggerPrevious[trigger.name];
+                    else
+                        nextValues[trigger.name] = satisfied;
+                    end
+                    details[trigger.name] = detail;
+                    if (satisfied == true and classTriggerPrevious[trigger.name] ~= true) then
+                        fired[trigger.name] = true;
+                        first = first or trigger.name;
+                    end
+                end
+                if (type(record) == "table" and record.classTrigger) then
+                    state.classDetails[trigger.name] = details[trigger.name] or L("class.invalid");
+                end
+            end
+        end
+    end
+    classTriggerPrevious = nextValues;
+    if (first and not aliases) then
+        HandleSkill(first, player:GetName(), nil, fired);
+    end
+end
+
+local watchedClassAttributes = setmetatable({}, { __mode = "k" });
+local function BindClassAttributeListeners()
+    if (not player or not player.GetClassAttributes) then
+        return;
+    end
+    local attributes = player:GetClassAttributes();
+    if (not attributes or watchedClassAttributes[attributes]) then
+        return;
+    end
+    watchedClassAttributes[attributes] = true;
+    for _, event in ipairs(ComboNextClassTriggers.Events(player, attributes)) do
+        local eventName = event;
+        AddCallback(attributes, eventName, function()
+            if (player:GetClassAttributes() ~= attributes) then
+                return;
+            end
+            if (eventName == "StanceChanged") then
+                confirmedStance[attributes] = true;
+            end
+            CheckClassTriggers();
+            RefreshConditions();
+            UpdateActiveSequence();
+            ui.UpdateDisplay();
+        end);
+    end
+end
+BindClassAttributeListeners();
+
 local function CheckHealthTriggers()
     local actors = { self = player };
     local okTarget, target = pcall(function() return player:GetTarget(); end);
@@ -2091,6 +2203,7 @@ healthPoller.Update = function()
     if (now - lastHealthPoll >= 0.5) then
         lastHealthPoll = now;
         CheckHealthTriggers();
+        CheckClassTriggers();
         RefreshConditions();
         UpdateActiveSequence();
         ui.UpdateDisplay();
@@ -2214,6 +2327,19 @@ AddCallback(Turbine.Chat, "Received", function(_, args)
     if (type(args.Message) ~= "string") then
         return;
     end
+    local traitMessages = {
+        "You have acquired the Class Specialization Bonus Trait",
+        "Ihr habt diese Bonus-Eigenschaft für Klassenspezialisierung erlangt",
+        "Vous avez obtenu le trait bonus de spécialisation de classe",
+    };
+    for _, message in ipairs(traitMessages) do
+        if (string.find(args.Message, message, 1, true)) then
+            for attributes in pairs(confirmedStance) do
+                confirmedStance[attributes] = nil;
+            end
+            break;
+        end
+    end
     if (args.ChatType ~= Turbine.ChatType.PlayerCombat) then
         if (speechSkipChannels[args.ChatType]) then
             return;
@@ -2253,6 +2379,7 @@ ui.ticker.Update = function()
     local now = Turbine.Engine.GetGameTime();
     if (not ui.nextSkillListenerRefresh or now >= ui.nextSkillListenerRefresh) then
         BindTrainedSkillListeners();
+        BindClassAttributeListeners();
         ui.nextSkillListenerRefresh = now + 2;
     end
     local resetAny = false;
@@ -2441,7 +2568,12 @@ function shellCommand:Execute(_, args)
                 for _, skill in ipairs(className ~= ComboNextConstants.effectsClass
                     and GetClassSkills(className, "") or {}) do
                     skillCount = skillCount + 1;
-                    if (type(skill.data) ~= "string" or type(skill.skillName) ~= "string"
+                    if (skill.classTrigger) then
+                        skillCount = skillCount - 1;
+                        if (not ComboNextClassTriggers.Validate(skill)) then
+                            error("invalid class trigger in " .. className);
+                        end
+                    elseif (type(skill.data) ~= "string" or type(skill.skillName) ~= "string"
                         or type(skill.icon) ~= "number") then
                         unresolvedCount = unresolvedCount + 1;
                     else
@@ -2545,6 +2677,12 @@ function shellCommand:Execute(_, args)
         Check("combo and shortcut data", function()
             local combos, triggers, finishers = 0, 0, 0;
             local function CheckShortcut(record, label, allowChatPattern)
+                if (type(record) == "table" and record.classTrigger) then
+                    if (not allowChatPattern or not ComboNextClassTriggers.Validate(record)) then
+                        error(label .. " has an invalid class trigger");
+                    end
+                    return;
+                end
                 if (type(record) == "table" and type(record.effectName) == "string") then
                     return;
                 end
@@ -2645,6 +2783,31 @@ function shellCommand:Execute(_, args)
                     .. " unknown (item timers need a duration and observed use or Mark ready)" };
             end
             return tostring(known) .. " finishers have known readiness";
+        end);
+        Check("class trigger API coverage", function()
+            local known, unknown, seen = 0, {}, {};
+            for _, cfg in ipairs(settings.seqs) do
+                for _, record in pairs(cfg.skills) do
+                    if (type(record) == "table" and record.classTrigger
+                        and ComboNextClassTriggers.Validate(record)) then
+                        local key = ComboNextClassTriggers.Key(record);
+                        if (not seen[key]) then
+                            seen[key] = true;
+                            local value, reason = ComboNextClassTriggers.Read(record, player,
+                                GetSkillLocale(), confirmedStance);
+                            if (value == nil) then
+                                unknown[#unknown + 1] = record.skillName .. ": " .. tostring(reason);
+                            else
+                                known = known + 1;
+                            end
+                        end
+                    end
+                end
+            end
+            if (#unknown > 0) then
+                return { unchecked = tostring(known) .. " readable; " .. table.concat(unknown, "; ") };
+            end
+            return tostring(known) .. " class triggers readable";
         end);
         Turbine.Shell.WriteLine(L("main.verifyDone", passed, failed, unchecked));
     elseif (action == "") then

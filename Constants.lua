@@ -1,6 +1,6 @@
 ComboNextConstants = {
     effectsClass = "*Effects*";
-    version = "1.39";
+    version = "1.40";
     maxSteps = 5;
     maxDisplayRows = 2;
     maxVisibleFinishers = 9;

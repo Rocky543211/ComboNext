@@ -8,6 +8,7 @@ ComboNext is a player-created combo advisor for **The Lord of the Rings Online**
 - Match triggers from combat chat, local skill-use events, captured chat phrases, and configured effects.
 - Connect individual triggers with AND/OR, using ordered events, any-order events, or current conditions.
 - Check effect families, exact raid effects, and health thresholds on yourself or your target.
+- Use class resources and states as triggers inside the corresponding class catalog.
 - Choose trigger skills from the class skill catalog or drag shortcuts from your action bar.
 - Share combo configurations by exporting text to copy or importing text from another player.
 - Customize the advisor's opacity, scale, colors, reset timer, and finisher display.
@@ -110,10 +111,67 @@ are shared across its combo entries, but shared cooldowns between different item
 are not detected. After reloading the plugin, item readiness is unknown again.
 Mark ready only after checking the actual cooldown in-game.
 
-New exports use `CN3` to preserve each trigger's AND/OR connection, trigger modes
-and item timer durations. Existing `CN1` and `CN2` exports can still be imported;
-older combo-wide OR modes are converted automatically. `CN3` requires ComboNext
-1.39 or later.
+### Class resource and state triggers
+
+Open **EDIT**, select a trigger slot, then choose the corresponding class in the
+catalog selector. Class conditions appear before that class's skills, **not under
+Effects**. Select one, then use the comparison button and value field at the bottom
+and click **Save**. Comparisons are `<`, `<=`, `=`, `>=`, and `>`; values must be
+whole numbers within the displayed range. Yes/no states use `= 1` or `= 0`.
+
+| Class | Conditions |
+| --- | --- |
+| Hunter | Focus (0-9); Endurance, Precision, Strength stances |
+| Champion | Fervour (0-5) |
+| Beorning | Wrath (0-100); bear form |
+| Rune-keeper | Battle/healing attunement (0-9 each); charged state if exposed by LOTRO |
+| Mariner | Balance, using the raw value returned by LOTRO |
+| Brawler | Mettle (0-9), derived from Battle Flow effects |
+| Guardian | Fortification stacks (0-5), derived from Improved Fortification effects |
+| Warden | Advanced Technique stacks (0-5); individual gambit slots; Assailment/Determination stances |
+| Minstrel | Melody, Dissonance, Resonance stances |
+
+No dedicated resource reader is added for Burglar, Captain, or Lore-master.
+Their existing skill and effect triggers remain available.
+
+For example, choose **Hunter > Focus >= 3**, change it to `>= 6`, and save.
+In **Current conditions**, it qualifies while you have at least six Focus. You can
+combine it with health, effects, skills, or other class conditions using the
+existing per-trigger AND/OR connections. Conditions cannot be finishers and do
+not activate anything.
+
+In event modes, a class comparison fires when it first becomes true, including
+the first available reading. It must become false before firing again; reloading
+or editing the combo resets that tracking. Multiple thresholds becoming true
+together advance at most one step of an event-based rule. Direct resource, stance,
+and gambit notifications refresh immediately when available; polling every 0.5
+seconds also covers missed notifications, bear/charged states, and effect stacks.
+Unobserved changes between polls cannot be reconstructed.
+
+Rune-keeper attunement is converted from the API's neutral value of 10: lower
+values become battle attunement, higher values become healing attunement.
+Mariner balance intentionally has no guessed fore/aft or neutral mapping; consult
+the progress message for its current raw value. Its editable -1000 to 1000 range
+is an input limit, not a claimed in-game resource scale.
+Warden gambit values are `0 = empty`, `1 = spear`, `2 = shield`, `3 = fist`;
+unverified builder types or unavailable slots are unknown, not empty.
+
+Stance readings remain unknown until you explicitly select a stance after loading
+the plugin or a detected trait/skill-list change, because LOTRO can otherwise
+report stale stance values. Unsupported APIs, wrong-class conditions, and unreadable
+values stay **unknown** and cannot satisfy a condition. Mettle effect names are
+supported in English, German, and French. Fortification and Advanced Technique
+effect names are currently verified only in English; other languages report
+unknown rather than guessing zero stacks. These integrations have mocked-API
+coverage, not live validation for every class.
+
+### Sharing compatibility
+
+New exports use `CN4` to preserve class conditions as well as each trigger's
+AND/OR connection, trigger modes, and item timer durations. Existing `CN1`, `CN2`,
+and `CN3` exports can still be imported; older combo-wide OR modes are converted
+automatically. `CN4` requires ComboNext 1.40 or later. Invalid class conditions
+reject an import rather than silently weakening its trigger requirements.
 
 ### Verification
 
@@ -121,6 +179,8 @@ older combo-wide OR modes are converted automatically. `CN3` requires ComboNext
 **NOT CHECKED**. Not checked means LOTRO did not expose enough information, rather
 than that the configuration passed. The summary includes all three counts.
 Unobserved item timers and unreadable skill shortcuts are explicitly reported.
+Class-trigger coverage also reports wrong-class, unavailable API, unconfirmed
+stance, and unsupported effect-language readings as **NOT CHECKED**.
 
 For local regression checks without LOTRO, run `lua tests/run.lua` from this
 folder. These use mocked game APIs; they do not replace in-game checks.
