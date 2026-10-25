@@ -1219,4 +1219,83 @@ output = {};
 command:Execute("cn", "verify");
 check(not table.concat(output, "\n"):find("VERIFY FAIL", 1, true),
     "valid priorities pass configuration verification");
+local resourceTiers = {
+    { "Hunter", "focus", 9, "GetFocus" },
+    { "Champion", "fervour", 5, "GetFervor" },
+    { "Beorning", "wrath", 100, "GetWrath" },
+    { "RuneKeeper", "battle", 9, "GetAttunement" },
+    { "RuneKeeper", "healing", 9, "GetAttunement" },
+    { "Brawler", "mettle", 9 },
+    { "Guardian", "fortification", 5 },
+    { "Warden", "technique", 5 },
+};
+for _, case in ipairs(resourceTiers) do
+    local className, key, maximum, getter = unpack(case);
+    local values = {};
+    local presetCount = 0;
+    for _, record in ipairs(classTriggers.Catalog(className)) do
+        if (record.classTrigger == key) then
+            presetCount = presetCount + 1;
+            check(record.classCompare == "ge" and not values[record.classValue],
+                "tier preset uses >= without duplicates " .. key .. "/" .. record.classValue);
+            values[record.classValue] = record;
+        end
+    end
+    check(presetCount == maximum, "exact number of resource tier presets " .. key);
+    for value = 1, maximum do
+        local record = values[value];
+        check(record ~= nil and classTriggers.Validate(record), "every resource tier exists " .. key .. "/" .. value);
+        check(record.skillName:find(">= " .. value, 1, true), "tier label contains threshold " .. key .. "/" .. value);
+        local found = false;
+        for _, result in ipairs(editor.getSkills(className, record.skillName)) do
+            if (result.classTrigger == key and result.classValue == value and result.classCompare == "ge") then
+                found = true;
+            end
+        end
+        check(found, "each resource tier is searchable within class catalog " .. key .. "/" .. value);
+        if (getter) then
+            asClass(className);
+            for _, current in ipairs({ value - 1, value, math.min(maximum, value + 1) }) do
+                local raw = current;
+                if (key == "battle") then
+                    raw = 10 - current;
+                elseif (key == "healing") then
+                    raw = 10 + current;
+                end
+                attributes[getter] = function() return raw; end;
+                check(classTriggers.Evaluate(record, player, "en") == (current >= value),
+                    "resource tier boundary " .. key .. "/" .. value .. "/" .. current);
+            end
+        end
+    end
+end
+local balanceCatalog = classTriggers.Catalog("Mariner");
+check(#balanceCatalog == 1 and balanceCatalog[1].classTrigger == "balance",
+    "raw balance does not invent thousands of unverified resource tiers");
+for _, record in ipairs(classTriggers.Catalog("Warden")) do
+    if (record.classTrigger:find("gambit", 1, true)) then
+        check(record.classCompare == "eq", "gambit builder IDs retain equality comparisons");
+    end
+end
+asClass("Hunter", { focus = 3; GetFocus = readFocus });
+configure("allConditions", { classTriggers.Record("focus", "ge", 5) });
+tick();
+check(not ui.recommendations[1], "five-Focus condition cannot recommend at three Focus");
+attributes.focus = 5;
+tick();
+check(ui.recommendations[1], "five-Focus condition recommends at exactly five Focus");
+attributes.focus = 4;
+tick();
+check(not ui.recommendations[1], "five-Focus live condition clears when Focus drops to four");
+local hunterPresets = classTriggers.Catalog("Hunter");
+configure("allConditions", { classTriggers.Record("focus", "ge", 3) });
+editor:SelectSlot(1, 1);
+editor:Assign(hunterPresets[5]);
+check(ui.settings.seqs[1].skills[1].classValue == 5
+    and hunterPresets[3].classValue == 3, "assigning tier preset selects its value without changing other presets");
+editor.classValueText:SetText("7");
+editor.classValueSave:Click();
+check(ui.settings.seqs[1].skills[1].classValue == 7 and hunterPresets[5].classValue == 5,
+    "editing assigned preset does not modify the catalog tier");
+check(ComboNextConstants.version == "1.4", "additional same-day changes remain version 1.4");
 print(tostring(count) .. " ComboNext assertions passed.");

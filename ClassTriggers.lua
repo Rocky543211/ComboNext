@@ -99,8 +99,14 @@ function M.Catalog(className)
     for _, key in ipairs(order) do
         local definition = definitions[key];
         if (definition.class == className) then
-            records[#records + 1] = M.Record(key, definition.boolean and "eq"
-                or definition.slot and "eq" or "ge", definition.boolean and 1 or definition.default);
+            if (definition.min == 0 and not definition.slot) then
+                for value = 1, definition.max do
+                    records[#records + 1] = M.Record(key, "ge", value);
+                end
+            else
+                records[#records + 1] = M.Record(key, definition.boolean and "eq"
+                    or definition.slot and "eq" or "ge", definition.boolean and 1 or definition.default);
+            end
         end
     end
     return records;

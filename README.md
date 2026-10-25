@@ -140,6 +140,14 @@ Effects**. Select one, then use the comparison button and value field at the bot
 and click **Save**. Comparisons are `<`, `<=`, `=`, `>=`, and `>`; values must be
 whole numbers within the displayed range. Yes/no states use `= 1` or `= 0`.
 
+Bounded resources have a separate **`>=` entry for every tier**: Focus 1-9,
+Fervour 1-5, Wrath 1-100, battle/healing attunement 1-9 each, Mettle 1-9,
+Fortification 1-5, and Advanced Technique 1-5. Use the catalog search or page
+buttons to find the required tier. Each preset remains editable, including zero
+and other comparisons; existing combos keep their saved values. Mariner balance
+keeps one editable raw-value entry because its in-game scale is not verified.
+Stances, forms, charged states, and gambit builder identities are not resource tiers.
+
 | Class | Conditions |
 | --- | --- |
 | Hunter | Focus (0-9); Endurance, Precision, Strength stances |
@@ -155,11 +163,16 @@ whole numbers within the displayed range. Yes/no states use `= 1` or `= 0`.
 No dedicated resource reader is added for Burglar, Captain, or Lore-master.
 Their existing skill and effect triggers remain available.
 
-For example, choose **Hunter > Focus >= 3**, change it to `>= 6`, and save.
-In **Current conditions**, it qualifies while you have at least six Focus. You can
+For example, choose **Hunter > Focus >= 5** for a skill that requires five Focus.
+In **Current conditions**, it qualifies while you have at least five Focus. You can
 combine it with health, effects, skills, or other class conditions using the
 existing per-trigger AND/OR connections. Conditions cannot be finishers and do
 not activate anything.
+
+A `Focus >= 3` trigger still qualifies at three Focus even if its finisher costs
+five. ComboNext does not infer a skill's resource cost: choose the matching tier
+and **Current conditions** to require that resource amount right now. Event modes
+remember a threshold crossing and can retain it after the resource falls again.
 
 In event modes, a class comparison fires when it first becomes true, including
 the first available reading. It must become false before firing again; reloading
