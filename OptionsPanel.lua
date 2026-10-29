@@ -60,13 +60,13 @@ function ComboNextOptionsPanel:Constructor(settings, saveSettings, refresh, appl
     self.opacityButton = AddButton("", 12, 112, 180, function()
         self:ChangeOpacity();
     end);
-    self.finisherModeButton = AddButton("", 198, 112, 180, function()
-        local maxSlots = ComboNextConstants.maxVisibleFinishers;
-        self.settings.finisherSlots = ((self.settings.finisherSlots or 1) % maxSlots) + 1;
-        self.settings.showAllFinishers = self.settings.finisherSlots > 1;
-        self:RefreshValues();
-        self.saveSettings();
-        self.refresh();
+    self.finisherSlotsLabel = AddLabel("", 198, 112, 124, 24);
+    self.finisherSlotsLabel:SetFont(Turbine.UI.Lotro.Font.Verdana10);
+    self.fewerSlotsButton = AddButton("-", 326, 112, 24, function()
+        self:ChangeFinisherSlots(-1);
+    end);
+    self.moreSlotsButton = AddButton("+", 354, 112, 24, function()
+        self:ChangeFinisherSlots(1);
     end);
     self.scaleButton = AddButton("", 12, 144, 180, function()
         self:ChangeScale();
@@ -138,6 +138,17 @@ end
 
 function ComboNextOptionsPanel:ApplyAppearance()
     if (self.applyTheme) then self.applyTheme(); end
+    self:RefreshValues();
+    self.saveSettings();
+    self.refresh();
+end
+
+function ComboNextOptionsPanel:ChangeFinisherSlots(direction)
+    local current = self.settings.finisherSlots or 1;
+    local slots = math.max(1, math.min(ComboNextConstants.maxVisibleFinishers, current + direction));
+    if (slots == current) then return; end
+    self.settings.finisherSlots = slots;
+    self.settings.showAllFinishers = slots > 1;
     self:RefreshValues();
     self.saveSettings();
     self.refresh();
@@ -220,7 +231,10 @@ function ComboNextOptionsPanel:RefreshValues()
     self.timeoutValue:SetText(tostring(self.settings.resetSeconds or 10));
     self.opacityButton:SetText(L("options.opacity",
         math.floor((self.settings.opacity or 1) * 100)));
-    self.finisherModeButton:SetText(L("options.finisherSlots", self.settings.finisherSlots or 1));
+    local slots = self.settings.finisherSlots or 1;
+    self.finisherSlotsLabel:SetText(L("options.finisherSlots", slots));
+    self.fewerSlotsButton:SetEnabled(slots > 1);
+    self.moreSlotsButton:SetEnabled(slots < ComboNextConstants.maxVisibleFinishers);
     self.combatButton:SetText(L(self.settings.showInCombat
         and "options.combatOn" or "options.combatOff"));
     self.starterButton:SetText(L(self.settings.alwaysFirstFinisher

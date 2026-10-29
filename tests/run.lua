@@ -1582,4 +1582,47 @@ end
 discardedControl();
 collectgarbage("collect"); collectgarbage("collect");
 check(ephemeral[1] == nil, "theme repaint registry does not retain discarded controls in Lua 5.1");
+local previousSlotCount = ui.settings.finisherSlots;
+local previousSaveSlots = Turbine.PluginData.Save;
+local savedSlots;
+Turbine.PluginData.Save = function(_, name, value)
+    if (name == "ComboNext") then
+        savedSlots = tonumber(string.match(value.finisherSlots, "^__CN_NUMBER__:(%d+)$"));
+    end
+end;
+local comboData, comboProgress = ui.settings.seqs, ui.states[1];
+ui.settings.finisherSlots = 1;
+ui.settings.showAllFinishers = false;
+options.refresh();
+check(options.finisherSlotsLabel:GetText() == "Combo Slots: 1", "options labels recommendation count as Combo Slots");
+check(not options.fewerSlotsButton:IsEnabled() and options.moreSlotsButton:IsEnabled(),
+    "one slot disables only decrement");
+options.fewerSlotsButton:MouseClick({ Button = 1 });
+check(ui.settings.finisherSlots == 1, "disabled decrement cannot wrap to maximum");
+for slots = 2, ComboNextConstants.maxVisibleFinishers do
+    options.moreSlotsButton:MouseClick({ Button = 1 });
+    check(ui.settings.finisherSlots == slots and savedSlots == slots and ui.settings.showAllFinishers,
+        "plus adds and saves one slot");
+    check(pluginOptions.finisherSlotsLabel:GetText() == "Combo Slots: " .. slots,
+        "slot increments refresh both options surfaces");
+end
+check(not options.moreSlotsButton:IsEnabled() and options.fewerSlotsButton:IsEnabled(),
+    "maximum slots disables only increment");
+options.moreSlotsButton:MouseClick({ Button = 1 });
+check(ui.settings.finisherSlots == ComboNextConstants.maxVisibleFinishers, "disabled increment cannot wrap to one");
+for slots = ComboNextConstants.maxVisibleFinishers - 1, 1, -1 do
+    pluginOptions.fewerSlotsButton:MouseClick({ Button = 1 });
+    check(ui.settings.finisherSlots == slots and savedSlots == slots,
+        "minus removes and saves one slot from plugin-manager options");
+    check(options.finisherSlotsLabel:GetText() == "Combo Slots: " .. slots,
+        "slot decrements refresh standalone options");
+end
+check(not ui.settings.showAllFinishers and not options.fewerSlotsButton:IsEnabled(),
+    "returning to one slot restores shared-finisher mode");
+check(ui.settings.seqs == comboData and ui.states[1] == comboProgress,
+    "changing slot count preserves combos and matched progress");
+ui.settings.finisherSlots = previousSlotCount;
+ui.settings.showAllFinishers = previousSlotCount > 1;
+Turbine.PluginData.Save = previousSaveSlots;
+options.refresh();
 print(tostring(count) .. " ComboNext assertions passed.");

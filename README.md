@@ -48,6 +48,10 @@ Use **Share combos** in the editor to export or import combo text. Imports can b
 
 ### Appearance
 
+Use **Combo Slots** and its **- / +** buttons in **OPTIONS** to decrease or
+increase the number of visible recommendation slots, from 1 to 9, without
+cycling through every value. Changes apply immediately and are saved.
+
 Open **OPTIONS** (or the plugin manager's options panel). **Window style** switches
 between the new **Decorative** skin and **Classic** LOTRO controls immediately,
 including windows already open. Appearance settings are saved per character;
