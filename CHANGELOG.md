@@ -14,6 +14,7 @@ The 2026-10-25 intermediate version labels are consolidated below; Git history i
 
 ## [1.5] - 2026-10-29
 
+- Sized advisor recommendation quickslots to the native 32x32 skill icon, with a matching one-pixel highlight border instead of an oversized empty frame. Combo labels remain below the icons.
 - Removed Window style and Appearance mode controls. The decorative skin remains enabled, with independent Race and Class selectors always available and Automatic as each selector's default. Existing manual choices are retained; obsolete style/mode settings no longer lock or change them.
 - Renamed the options' NEXT slots control to Combo Slots and replaced cycling with separate minus/plus buttons. Values stay within 1-9, with unavailable directions disabled; both options surfaces update and save immediately.
 - Themes now own panel tints, borders, button accents, and advisor highlights. Removed the separate Colors button and Colour only mode; old standalone color selections migrate to Automatic without modifying combos.

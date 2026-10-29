@@ -19,7 +19,7 @@ local ui = ComboNext;
 local MAX_STEPS = ComboNextConstants.maxSteps;
 local MAX_DISPLAY_ROWS = ComboNextConstants.maxDisplayRows;
 local RESET_SECONDS = ComboNextConstants.resetSeconds;
-local SLOT_BIG, SLOT_SMALL = 56, 36;
+local SLOT_ICON, SLOT_SMALL = 32, 36;
 local WINDOW_WIDTH, WINDOW_HEIGHT = 390, 304;
 local settings;
 
@@ -1107,10 +1107,10 @@ ui.finisherChoices = {};
 local function PlaceFinisherChoice(choice, index)
     local count = math.max(1, settings.finisherSlots or 1);
     local spacing = math.min(62, math.floor(366 / count));
-    local size = math.min(SLOT_BIG, spacing - 2);
+    local size = math.min(SLOT_ICON, spacing - 2);
     local x = 12 + (index - 1) * spacing;
-    local thickness = 2;
-    local hx, hy, hs = x + 1, 41, size - 2;
+    local thickness = 1;
+    local hx, hy, hs = x, 40, size;
     local rects = {
         { hx, hy, hs, thickness },
         { hx, hy + hs - thickness, hs, thickness },
@@ -1133,6 +1133,7 @@ for index = 1, MAX_VISIBLE_FINISHERS do
     for _ = 1, 4 do
         local edge = Turbine.UI.Control();
         edge:SetParent(ui.win);
+        edge:SetMouseVisible(false);
         edge:SetZOrder(91);
         edge:SetVisible(false);
         table.insert(choice.highlight, edge);

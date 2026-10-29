@@ -51,6 +51,8 @@ Use **Share combos** in the editor to export or import combo text. Imports can b
 Use **Combo Slots** and its **- / +** buttons in **OPTIONS** to decrease or
 increase the number of visible recommendation slots, from 1 to 9, without
 cycling through every value. Changes apply immediately and are saved.
+Recommendation icons use native 32x32 quickslots with a matching thin border,
+rather than a larger empty frame; interface scaling scales both together.
 
 Open **OPTIONS** (or the plugin manager's options panel) to choose **Race** and
 **Class** directly. Both selectors are always available, with **Automatic** as the

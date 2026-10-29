@@ -1689,4 +1689,26 @@ check(not equalColour(elfBackground, theme.Background()), "different race themes
 check(ui.settings.seqs == themeCombos and ui.states[1] == themeProgress,
     "theme-controlled colours preserve combo configuration and progress");
 ui.ApplyTheme();
+local previousFrameSlots = ui.settings.finisherSlots;
+for slots = 1, ComboNextConstants.maxVisibleFinishers do
+    ui.settings.finisherSlots = slots;
+    ui.RelayoutFinishers();
+    for index = 1, slots do
+        local choice = ui.finisherChoices[index];
+        local icon = choice.icon;
+        check(icon:GetWidth() == 32 and icon:GetHeight() == 32,
+            "recommendations use the native skill-icon size at slot count " .. slots);
+        local top, bottom, left, right = unpack(choice.highlight);
+        check(top.x == icon.x and top.y == icon.y and top:GetWidth() == icon:GetWidth()
+            and top:GetHeight() == 1, "recommendation top border fits the skill icon");
+        check(bottom.x == icon.x and bottom.y == icon.y + icon:GetHeight() - 1
+            and bottom:GetWidth() == icon:GetWidth(), "recommendation bottom border fits the skill icon");
+        check(left.x == icon.x and left:GetWidth() == 1
+            and right.x == icon.x + icon:GetWidth() - 1 and right:GetWidth() == 1,
+            "recommendation side borders fit the skill icon");
+        check(choice.label.y >= icon.y + icon:GetHeight(), "combo label stays below compact skill icon");
+    end
+end
+ui.settings.finisherSlots = previousFrameSlots;
+ui.RelayoutFinishers();
 print(tostring(count) .. " ComboNext assertions passed.");
