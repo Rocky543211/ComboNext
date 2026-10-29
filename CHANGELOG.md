@@ -15,9 +15,11 @@ The 2026-10-25 intermediate version labels are consolidated below; Git history i
 ## [1.5] - 2026-10-29
 
 - Renamed the options' NEXT slots control to Combo Slots and replaced cycling with separate minus/plus buttons. Values stay within 1-9, with unavailable directions disabled; both options surfaces update and save immediately.
+- Themes now own panel tints, borders, button accents, and advisor highlights. Removed the separate Colors button and Colour only mode; old standalone color selections migrate to Automatic without modifying combos.
+- Fixed ready-only filtering treating an expired cooldown as sufficient when skill usability was not exposed. Missing, failed, or non-boolean usability is now unknown and hidden, while show-even-on-cooldown remains unchanged.
 - Restyled the advisor, combo editor, options, and sharing windows with standalone dark decorative panels, ornamental headers, race emblems, and class badges. Original bundled TGA artwork has no StatCaps dependency.
-- Added live Decorative/Classic switching and automatic, race-only, class-only, combined race/class, and colour-only appearance modes in both options surfaces. Manual choices cover nine race themes and all twelve classes.
-- Retained existing non-default colour choices on update. Unavailable race/class detection is explained in the options status instead of guessing a character identity.
+- Added live Decorative/Classic switching and automatic, race-only, class-only, and combined race/class appearance modes in both options surfaces. Manual choices cover nine race themes and all twelve classes.
+- Unavailable race/class detection is explained in the options status instead of guessing a character identity.
 - Added consistent button hover, pressed, disabled, and keyboard-focus states, native text input, draggable headers, close buttons, and Escape support for auxiliary windows.
 - Kept combo configuration, priorities, trigger logic, readiness filtering, sharing, and matched progress unchanged by appearance settings.
 - Adjusted automatic UI fitting to account for the full editor height on smaller screens.

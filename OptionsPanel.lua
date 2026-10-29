@@ -68,11 +68,8 @@ function ComboNextOptionsPanel:Constructor(settings, saveSettings, refresh, appl
     self.moreSlotsButton = AddButton("+", 354, 112, 24, function()
         self:ChangeFinisherSlots(1);
     end);
-    self.scaleButton = AddButton("", 12, 144, 180, function()
+    self.scaleButton = AddButton("", 12, 144, 366, function()
         self:ChangeScale();
-    end);
-    self.themeButton = AddButton("", 198, 144, 180, function()
-        self:ChangeTheme();
     end);
     self.starterButton = AddButton("", 12, 176, 366, function()
         self.settings.alwaysFirstFinisher = not self.settings.alwaysFirstFinisher;
@@ -207,26 +204,6 @@ function ComboNextOptionsPanel:ChangeScale()
     self.refresh();
 end
 
-function ComboNextOptionsPanel:ChangeTheme()
-    local values = ComboNextConstants.uiThemes;
-    local index = 1;
-    for i = 1, #values do
-        if (values[i] == self.settings.uiTheme) then
-            index = i;
-            break;
-        end
-    end
-    index = (index % #values) + 1;
-    self.settings.uiTheme = values[index];
-    self.settings.appearanceMode = "colour";
-    if (self.applyTheme) then
-        self.applyTheme();
-    end
-    self:RefreshValues();
-    self.saveSettings();
-    self.refresh();
-end
-
 function ComboNextOptionsPanel:RefreshValues()
     self.timeoutValue:SetText(tostring(self.settings.resetSeconds or 10));
     self.opacityButton:SetText(L("options.opacity",
@@ -240,7 +217,6 @@ function ComboNextOptionsPanel:RefreshValues()
     self.starterButton:SetText(L(self.settings.alwaysFirstFinisher
         and "options.starterOn" or "options.starterOff"));
     self.scaleButton:SetText(L("options.scale", math.floor((self.settings.uiScale or 1) * 100)));
-    self.themeButton:SetText(L("options.theme", L("options.theme." .. (self.settings.uiTheme or "gold"))));
     self.readyButton:SetText(L(self.settings.readyOnly and "options.readyOnly"
         or "options.showCooldowns"));
     local profile = ComboNextTheme.Profile();

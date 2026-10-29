@@ -11,7 +11,7 @@ ComboNext is a player-created combo advisor for **The Lord of the Rings Online**
 - Use class resources and states as triggers inside the corresponding class catalog.
 - Choose trigger skills from the class skill catalog or drag shortcuts from your action bar.
 - Share combo configurations by exporting text to copy or importing text from another player.
-- Customize the advisor's opacity, scale, colors, reset timer, and finisher display.
+- Customize the advisor's opacity, scale, theme, reset timer, and finisher display.
 - Use a decorative race/class skin across the advisor, editor, options, and sharing windows, or switch to Classic.
 - Optionally hide finishers until ready, using skill cooldowns and player-configured item timers.
 - Assign combo priorities from 1 (highest) to 9 (lowest), with equal priorities allowed.
@@ -67,10 +67,12 @@ and does **not** require StatCaps.
 | Race theme | Choose a race accent/emblem, without a class badge. |
 | Class theme | Choose a class accent/badge with the neutral Gondorian emblem. |
 | Race theme + class badge | Select the race and class independently; either selector can remain Automatic. |
-| Colour only | Use the existing gold, blue, violet, or green colour selection, with a neutral emblem and no class badge. |
 
-The existing **Colors** button switches to Colour only. Previously selected
-non-default colors are retained on update. Manual choices include all twelve
+The selected theme controls panel tints, borders, button accents, and advisor
+highlights automatically; there is no separate Colors option. Race and combined
+race/class modes use the race palette, while Class theme uses the class palette.
+Old standalone color selections and Colour only mode migrate to Automatic on
+update without changing combos. Manual choices include all twelve
 classes and Gondorian, Man, Elf, Dwarf, Hobbit, Beorning, High Elf, Stout-axe, and
 River Hobbit race themes. Gondorian is a decorative theme, not a separate detected
 game race.
@@ -168,6 +170,13 @@ item does not produce a recognizable chat message. Timers for the same item name
 are shared across its combo entries, but shared cooldowns between different items
 are not detected. After reloading the plugin, item readiness is unknown again.
 Mark ready only after checking the actual cooldown in-game.
+
+If a greyed-out skill still appears, check that **Finishers: ready only (hide unknown)**
+is selected rather than **show even on cooldown**. An expired cooldown alone is
+not proof a skill can be used: a missing, failed, or non-boolean usability reading
+is unknown and is hidden in ready-only mode. If LOTRO does not expose usable
+information for a skill, this can hide it even when you could use it manually.
+ComboNext cannot inspect every reason the game greys out a shortcut.
 
 ### Class resource and state triggers
 

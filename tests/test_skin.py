@@ -48,6 +48,9 @@ class SkinTests(unittest.TestCase):
         text = luminance((.94, .91, .83))
         for background in ((.095, .12, .14), (.18, .22, .24), (.10, .13, .15)):
             self.assertGreaterEqual((text + .05) / (luminance(background) + .05), 4.5)
+        for colour in (*skin.RACES.values(), *skin.CLASSES.values()):
+            background = tuple(.025 + channel / 255 * .045 for channel in colour)
+            self.assertGreaterEqual((text + .05) / (luminance(background) + .05), 4.5)
         disabled = luminance((.62, .64, .62))
         self.assertGreaterEqual((disabled + .05) / (luminance((.065, .075, .08)) + .05), 4.5)
 

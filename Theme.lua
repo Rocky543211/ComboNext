@@ -11,7 +11,7 @@ T.races = { "Gondorian", "Man", "Elf", "Dwarf", "Hobbit", "Beorning",
     "HighElf", "StoutAxe", "RiverHobbit" };
 T.classes = { "Beorning", "Brawler", "Burglar", "Captain", "Champion", "Guardian",
     "Hunter", "LoreMaster", "Mariner", "Minstrel", "RuneKeeper", "Warden" };
-T.modes = { "automatic", "race", "class", "raceClass", "colour" };
+T.modes = { "automatic", "race", "class", "raceClass" };
 local raceColours = {
     Gondorian = { 0.78, 0.65, 0.40 }; Man = { 0.82, 0.69, 0.44 };
     Elf = { 0.62, 0.79, 0.65 }; Dwarf = { 0.83, 0.61, 0.36 };
@@ -26,10 +26,6 @@ local classColours = {
     Hunter = { 0.65, 0.83, 0.54 }; LoreMaster = { 0.60, 0.82, 0.78 };
     Mariner = { 0.54, 0.80, 0.89 }; Minstrel = { 0.90, 0.74, 0.86 };
     RuneKeeper = { 0.71, 0.73, 0.97 }; Warden = { 0.85, 0.73, 0.51 };
-};
-local colours = {
-    gold = raceColours.Gondorian; blue = { 0.58, 0.82, 1 };
-    violet = { 0.84, 0.68, 1 }; green = { 0.62, 1, 0.73 };
 };
 local painters = setmetatable({}, { __mode = "k" });
 local profile = { race = "Gondorian"; colour = raceColours.Gondorian; custom = true };
@@ -55,7 +51,7 @@ function T.Resolve(settings, player, gameplay)
     local race = Contains(T.races, settings.appearanceRace) and settings.appearanceRace or nil;
     local className = Contains(T.classes, settings.appearanceClass) and settings.appearanceClass or nil;
     local warnings = {};
-    if (mode == "automatic" or (mode ~= "class" and mode ~= "colour" and not race)) then
+    if (mode == "automatic" or (mode ~= "class" and not race)) then
         race = Detect(player, "GetRace", gameplay.Race, T.races);
         if (not race) then warnings[#warnings + 1] = L("theme.raceUnknown"); end
     end
@@ -64,12 +60,11 @@ function T.Resolve(settings, player, gameplay)
         if (not className) then warnings[#warnings + 1] = L("theme.classUnknown"); end
     end
     race = race or "Gondorian";
-    if (mode == "race" or mode == "colour") then className = nil; end
-    if (mode == "class" or mode == "colour") then race = "Gondorian"; end
+    if (mode == "race") then className = nil; end
+    if (mode == "class") then race = "Gondorian"; end
     return {
         mode = mode; race = race; class = className; custom = settings.uiStyle ~= "classic";
-        colour = mode == "colour" and (colours[settings.uiTheme] or colours.gold)
-            or mode == "class" and className and classColours[className] or raceColours[race];
+        colour = mode == "class" and className and classColours[className] or raceColours[race];
         warning = #warnings > 0 and table.concat(warnings, " ") or nil;
     };
 end
@@ -79,9 +74,9 @@ function T.Configure(settings, player)
         settings.uiStyle = "custom";
     end
     if (not Contains(T.modes, settings.appearanceMode)) then
-        settings.appearanceMode = colours[settings.uiTheme] and settings.uiTheme ~= "gold"
-            and "colour" or "automatic";
+        settings.appearanceMode = "automatic";
     end
+    settings.uiTheme = nil;
     if (not Contains(T.races, settings.appearanceRace)) then settings.appearanceRace = "automatic"; end
     if (not Contains(T.classes, settings.appearanceClass)) then settings.appearanceClass = "automatic"; end
     profile = T.Resolve(settings, player, Turbine.Gameplay);
@@ -99,6 +94,12 @@ end
 
 function T.Text()
     return Turbine.UI.Color(0.94, 0.91, 0.83);
+end
+
+function T.Background()
+    local colour = profile.colour;
+    return Turbine.UI.Color(1, 0.025 + colour[1] * 0.045,
+        0.025 + colour[2] * 0.045, 0.025 + colour[3] * 0.045);
 end
 
 local function Register(control, paint)
@@ -144,12 +145,11 @@ function T.Button()
         button:SetBackColor(profile.custom and (not enabled and Turbine.UI.Color(0.065, 0.075, 0.08)
             or pressed and Turbine.UI.Color(0.10, 0.13, 0.15)
             or (hover or focused) and Turbine.UI.Color(0.18, 0.22, 0.24)
-            or Turbine.UI.Color(0.095, 0.12, 0.14)) or Turbine.UI.Color(0, 0, 0, 0));
+            or T.Background()) or Turbine.UI.Color(0, 0, 0, 0));
         face:SetForeColor(enabled and T.Text() or Turbine.UI.Color(0.62, 0.64, 0.62));
         for _, edge in ipairs(edges) do
             edge:SetVisible(profile.custom);
-            edge:SetBackColor(enabled and (hover or focused) and T.Accent()
-                or Turbine.UI.Color(0.30, 0.34, 0.35));
+            edge:SetBackColor(enabled and T.Accent() or Turbine.UI.Color(0.30, 0.34, 0.35));
         end
     end
     local size, enable = button.SetSize, button.SetEnabled;
@@ -216,7 +216,7 @@ function T.TextBox()
     Register(box, function()
         box:SetFont(Turbine.UI.Lotro.Font.Verdana12 or Turbine.UI.Lotro.Font.Verdana10);
         box:SetForeColor(T.Text());
-        box:SetBackColor(profile.custom and Turbine.UI.Color(1, 0.045, 0.06, 0.075)
+        box:SetBackColor(profile.custom and T.Background()
             or Turbine.UI.Color(1, 0, 0, 0));
     end);
     return box;
@@ -295,6 +295,7 @@ function T.DecorateWindow(window, advisor)
     end;
     Register(window, function()
         moving = false;
+        body:SetBackColor(T.Background());
         body:SetVisible(profile.custom); header:SetVisible(profile.custom);
         emblem:SetVisible(profile.custom);
         caption:SetVisible(not advisor);

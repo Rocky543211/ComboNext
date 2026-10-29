@@ -68,37 +68,6 @@ local CheckClassTriggers;
 local confirmedStance = setmetatable({}, { __mode = "k" });
 local classTriggerPrevious = {};
 
-local UI_THEMES = {
-    gold = {
-        background = { 0.3, 0.05, 0.05, 0.05 };
-        accent = { 1, 1, 0.75 };
-        hover = { 1, 1, 0.9 };
-        status = { 1, 0.82, 0.48 };
-        highlight = { 0.5, 0, 0.9, 0 };
-    };
-    blue = {
-        background = { 0.3, 0.025, 0.055, 0.09 };
-        accent = { 0.58, 0.82, 1 };
-        hover = { 0.82, 0.94, 1 };
-        status = { 0.68, 0.86, 1 };
-        highlight = { 0.65, 0.12, 0.58, 1 };
-    };
-    violet = {
-        background = { 0.3, 0.07, 0.035, 0.09 };
-        accent = { 0.84, 0.68, 1 };
-        hover = { 0.94, 0.86, 1 };
-        status = { 0.88, 0.76, 1 };
-        highlight = { 0.65, 0.68, 0.28, 0.92 };
-    };
-    green = {
-        background = { 0.3, 0.025, 0.075, 0.055 };
-        accent = { 0.62, 1, 0.73 };
-        hover = { 0.84, 1, 0.9 };
-        status = { 0.68, 1, 0.76 };
-        highlight = { 0.65, 0.12, 0.9, 0.25 };
-    };
-};
-
 local function NumberToInvariantString(value)
     if (value % 1 == 0) then
         return string.format("%.0f", value);
@@ -304,13 +273,6 @@ for _, scale in ipairs(ComboNextConstants.uiScales) do
 end
 if (not validUiScale[settings.uiScale]) then
     settings.uiScale = 1;
-end
-local validUiTheme = {};
-for _, theme in ipairs(ComboNextConstants.uiThemes) do
-    validUiTheme[theme] = true;
-end
-if (type(settings.uiTheme) ~= "string" or not validUiTheme[settings.uiTheme]) then
-    settings.uiTheme = "gold";
 end
 ui.settings = settings;
 
@@ -1228,15 +1190,14 @@ end
 local highlightColor = Turbine.UI.Color(0.5, 0.0, 0.9, 0.0);
 ui.ApplyTheme = function()
     local profile = ComboNextTheme.Configure(settings, Turbine.Gameplay.LocalPlayer.GetInstance());
-    local theme = UI_THEMES[settings.uiTheme] or UI_THEMES.gold;
-    ui.win:SetBackColor(profile.custom and Turbine.UI.Color(1, 0.045, 0.06, 0.075)
-        or Turbine.UI.Color(unpack(theme.background)));
-    local accent = profile.custom and ComboNextTheme.Accent() or Turbine.UI.Color(1, unpack(theme.accent));
+    ui.win:SetBackColor(profile.custom and ComboNextTheme.Background()
+        or Turbine.UI.Color(0.3, 0.05, 0.05, 0.05));
+    local accent = ComboNextTheme.Accent();
     if (ui.launcher) then
-        ui.launcher:SetBackColor(profile.custom and Turbine.UI.Color(1, 0.045, 0.06, 0.075)
+        ui.launcher:SetBackColor(profile.custom and ComboNextTheme.Background()
             or Turbine.UI.Color(1, 0.025, 0.075, 0.065));
     end
-    local hover = Turbine.UI.Color(1, unpack(theme.hover));
+    local hover = ComboNextTheme.Text();
     if (ui.title) then
         ui.title:SetForeColor(accent);
     end
@@ -1244,7 +1205,7 @@ ui.ApplyTheme = function()
         button:SetForeColor(accent);
         button.themeHoverColor = hover;
     end
-    local statusColor = profile.custom and ComboNextTheme.Text() or Turbine.UI.Color(1, unpack(theme.status));
+    local statusColor = ComboNextTheme.Text();
     if (ui.diagnostic) then
         ui.diagnostic:SetForeColor(statusColor);
     end
@@ -1260,7 +1221,7 @@ ui.ApplyTheme = function()
     for _, choice in ipairs(ui.finisherChoices or {}) do
         choice.label:SetForeColor(accent);
     end
-    highlightColor = profile.custom and ComboNextTheme.Accent() or Turbine.UI.Color(unpack(theme.highlight));
+    highlightColor = accent;
     ui.UpdateDisplay();
 end;
 
@@ -1864,11 +1825,14 @@ GetFinisherReadiness = function(record)
         if (ready == false) then
             return false, L("main.cooldownRemaining", math.ceil(resetTime - now));
         end
-        if (ready and skill.IsUsable) then
-            local usableOk, usable = pcall(skill.IsUsable, skill);
-            if (not usableOk) then
+        if (ready) then
+            if (type(skill.IsUsable) ~= "function") then
                 return nil, L("main.readinessUnknown");
-            elseif (not usable) then
+            end
+            local usableOk, usable = pcall(skill.IsUsable, skill);
+            if (not usableOk or type(usable) ~= "boolean") then
+                return nil, L("main.readinessUnknown");
+            elseif (usable == false) then
                 return false, L("main.skillUnavailable");
             end
         end

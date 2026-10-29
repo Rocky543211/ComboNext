@@ -265,9 +265,25 @@ check(ui.finisherChoices[1].icon:IsVisible(), "finisher returns when cooldown en
 heal.usable = false;
 tick();
 check(not ui.finisherChoices[1].icon:IsVisible(), "unusable skill is hidden in ready-only mode");
+local originalUsability = heal.IsUsable;
+heal.IsUsable = nil;
+tick();
+check(not ui.finisherChoices[1].icon:IsVisible() and ui.recommendations[1],
+    "missing usability API hides unknown readiness without clearing matched progress");
+heal.IsUsable = function() return nil; end;
+tick();
+check(not ui.finisherChoices[1].icon:IsVisible(), "nil usability remains unknown and hidden");
+heal.IsUsable = function() return "true"; end;
+tick();
+check(not ui.finisherChoices[1].icon:IsVisible(), "nonboolean usability is not guessed ready");
+heal.IsUsable = function() error("unavailable"); end;
+tick();
+check(not ui.finisherChoices[1].icon:IsVisible(), "failed usability reading is unknown and hidden");
+heal.IsUsable = nil;
 ui.settings.readyOnly = false;
 tick();
-check(ui.finisherChoices[1].icon:IsVisible(), "show-always option retains cooldown finishers");
+check(ui.finisherChoices[1].icon:IsVisible(), "show-always option retains finishers with unknown usability");
+heal.IsUsable = originalUsability;
 heal.usable = true;
 
 local potion = { itemName = "Health Potion"; shortcutType = 2; data = "potion"; itemCooldown = 5 };
@@ -1352,16 +1368,18 @@ profile = theme.Resolve({ appearanceMode = "race"; appearanceRace = "Hobbit" }, 
 check(not profile.warning, "race-only mode never demands an unavailable class");
 profile = theme.Resolve({ appearanceMode = "class"; appearanceClass = "Brawler" }, unreadable, gameplay);
 check(not profile.warning, "class-only mode never demands an unavailable race");
-for _, colour in ipairs(ComboNextConstants.uiThemes) do
-    profile = theme.Resolve({ appearanceMode = "colour"; uiTheme = colour;
-        appearanceRace = "Dwarf"; appearanceClass = "Brawler" }, unreadable, gameplay);
-    check(profile.race == "Gondorian" and not profile.class and not profile.warning,
-        "colour-only theme does not need character attributes " .. colour);
+for _, colour in ipairs({ "gold", "blue", "violet", "green" }) do
+    local legacySettings = { appearanceMode = "colour"; uiTheme = colour;
+        appearanceRace = "Dwarf"; appearanceClass = "Brawler"; seqs = ui.settings.seqs };
+    theme.Configure(legacySettings, player);
+    check(legacySettings.appearanceMode == "automatic" and legacySettings.uiTheme == nil
+        and legacySettings.seqs == ui.settings.seqs and theme.Profile().race == "Elf",
+        "obsolete colour-only setting migrates to automatic without touching combos " .. colour);
 end
 local existingBlue = { uiTheme = "blue" };
 theme.Configure(existingBlue, player);
-check(existingBlue.appearanceMode == "colour" and existingBlue.uiStyle == "custom",
-    "existing nondefault colour selection survives appearance migration");
+check(existingBlue.appearanceMode == "automatic" and existingBlue.uiStyle == "custom"
+    and existingBlue.uiTheme == nil, "old standalone colour setting migrates to theme-controlled colours");
 local brokenAppearance = { appearanceMode = "invalid"; appearanceRace = "invalid";
     appearanceClass = "invalid"; uiStyle = "invalid" };
 theme.Configure(brokenAppearance, player);
@@ -1501,11 +1519,11 @@ check(ui.settings.appearanceRace == "Dwarf" and options.raceButton:IsEnabled(),
 latestMenu(function() options.appearanceButton:Click(); end)[1]:Click();
 check(not options.raceButton:IsEnabled() and not options.classThemeButton:IsEnabled(),
     "automatic mode locks manual selectors");
-options.themeButton:Click();
-check(ui.settings.appearanceMode == "colour" and not theme.Profile().class,
-    "existing colour control switches to colour-only mode");
+check(options.themeButton == nil and #theme.modes == 4,
+    "redundant colour button and colour-only mode are removed");
 local pluginOptions = plugin.GetOptionsPanel();
 check(pluginOptions.styleButton and pluginOptions.classThemeButton, "plugin-manager options expose appearance controls");
+check(pluginOptions.themeButton == nil, "plugin-manager options also omit the colour button");
 check(pluginOptions:GetHeight() >= pluginOptions.appearanceStatus.y + pluginOptions.appearanceStatus:GetHeight(),
     "plugin-manager panel contains appearance status");
 Turbine.PluginData.Save = saveAppearanceBefore;
@@ -1625,4 +1643,38 @@ ui.settings.finisherSlots = previousSlotCount;
 ui.settings.showAllFinishers = previousSlotCount > 1;
 Turbine.PluginData.Save = previousSaveSlots;
 options.refresh();
+local themeCombos, themeProgress = ui.settings.seqs, ui.states[1];
+local paletteButton = theme.Button();
+paletteButton:SetSize(100, 24);
+local function equalColour(left, right)
+    if (#left ~= #right) then return false; end
+    for index, value in ipairs(left) do
+        if (value ~= right[index]) then return false; end
+    end
+    return true;
+end
+for _, mode in ipairs({ "race", "class", "raceClass" }) do
+    local choices = mode == "class" and theme.classes or theme.races;
+    for _, choice in ipairs(choices) do
+        theme.Configure({ appearanceMode = mode; appearanceRace = choice;
+            appearanceClass = mode == "class" and choice or "Hunter" }, player);
+        local background, accent = theme.Background(), theme.Accent();
+        check(equalColour(ui.win.themeBody.backColor, background)
+            and equalColour(editor.themeBody.backColor, background)
+            and equalColour(share.themeBody.backColor, background)
+            and equalColour(skinOptionsWindow.themeBody.backColor, background),
+            "selected theme controls every window panel colour " .. mode .. "/" .. choice);
+        paletteButton:MouseLeave();
+        check(equalColour(paletteButton.themeEdges[1].backColor, accent)
+            and equalColour(paletteButton.backColor, background),
+            "selected theme controls button colour without a separate setting " .. choice);
+    end
+end
+theme.Configure({ appearanceMode = "race"; appearanceRace = "Elf" }, player);
+local elfBackground = theme.Background();
+theme.Configure({ appearanceMode = "race"; appearanceRace = "Dwarf" }, player);
+check(not equalColour(elfBackground, theme.Background()), "different race themes change panel colours");
+check(ui.settings.seqs == themeCombos and ui.states[1] == themeProgress,
+    "theme-controlled colours preserve combo configuration and progress");
+ui.ApplyTheme();
 print(tostring(count) .. " ComboNext assertions passed.");
