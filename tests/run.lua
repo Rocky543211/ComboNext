@@ -1342,12 +1342,12 @@ check(profile.race == "Elf" and profile.class == "Hunter" and not profile.warnin
 check(profile.custom, "decorative skin defaults on");
 for _, race in ipairs(theme.races) do
     profile = theme.Resolve({ appearanceMode = "race"; appearanceRace = race }, player, gameplay);
-    check(profile.race == race and profile.class == nil and not profile.warning,
+    check(profile.race == race and profile.class == "Hunter" and not profile.warning,
         "manual race theme " .. race);
 end
 for _, className in ipairs(theme.classes) do
     profile = theme.Resolve({ appearanceMode = "class"; appearanceClass = className }, player, gameplay);
-    check(profile.race == "Gondorian" and profile.class == className and not profile.warning,
+    check(profile.race == "Elf" and profile.class == className and not profile.warning,
         "manual class theme " .. className);
 end
 profile = theme.Resolve({ appearanceMode = "raceClass"; appearanceRace = "Dwarf";
@@ -1356,7 +1356,7 @@ check(profile.race == "Dwarf" and profile.class == "RuneKeeper" and not profile.
     "combined manual race and class profile");
 profile = theme.Resolve({ appearanceMode = "automatic"; appearanceRace = "Dwarf";
     appearanceClass = "RuneKeeper" }, player, gameplay);
-check(profile.race == "Elf" and profile.class == "Hunter", "automatic mode ignores manual overrides");
+check(profile.race == "Dwarf" and profile.class == "RuneKeeper", "manual choices work even with a legacy automatic mode");
 profile = theme.Resolve({ appearanceMode = "raceClass" }, player, gameplay);
 check(profile.race == "Elf" and profile.class == "Hunter", "manual combined mode supports automatic selectors");
 local unreadable = { GetRace = function() error("unknown race"); end;
@@ -1365,26 +1365,40 @@ profile = theme.Resolve({ appearanceMode = "automatic" }, unreadable, gameplay);
 check(profile.race == "Gondorian" and profile.class == nil and profile.warning,
     "missing detection has explicit neutral fallback and warning");
 profile = theme.Resolve({ appearanceMode = "race"; appearanceRace = "Hobbit" }, unreadable, gameplay);
-check(not profile.warning, "race-only mode never demands an unavailable class");
+check(profile.race == "Hobbit" and profile.class == nil and profile.warning,
+    "manual race remains usable when automatic class detection is unavailable");
 profile = theme.Resolve({ appearanceMode = "class"; appearanceClass = "Brawler" }, unreadable, gameplay);
-check(not profile.warning, "class-only mode never demands an unavailable race");
+check(profile.class == "Brawler" and profile.race == "Gondorian" and profile.warning,
+    "manual class remains usable when automatic race detection is unavailable");
+profile = theme.Resolve({ appearanceRace = "Dwarf"; appearanceClass = "Brawler" }, unreadable, gameplay);
+check(profile.race == "Dwarf" and profile.class == "Brawler" and not profile.warning,
+    "manual race and class never depend on available character detection");
+for _, oldMode in ipairs({ "automatic", "race", "class", "raceClass", "colour" }) do
+    local legacy = { uiStyle = "classic"; appearanceMode = oldMode;
+        appearanceRace = "Dwarf"; appearanceClass = "Brawler" };
+    theme.Configure(legacy, player);
+    check(legacy.uiStyle == nil and legacy.appearanceMode == nil
+        and legacy.appearanceRace == "Dwarf" and legacy.appearanceClass == "Brawler"
+        and theme.Profile().custom and theme.Profile().race == "Dwarf"
+        and theme.Profile().class == "Brawler", "legacy mode migration keeps independent choices " .. oldMode);
+end
 for _, colour in ipairs({ "gold", "blue", "violet", "green" }) do
     local legacySettings = { appearanceMode = "colour"; uiTheme = colour;
         appearanceRace = "Dwarf"; appearanceClass = "Brawler"; seqs = ui.settings.seqs };
     theme.Configure(legacySettings, player);
-    check(legacySettings.appearanceMode == "automatic" and legacySettings.uiTheme == nil
-        and legacySettings.seqs == ui.settings.seqs and theme.Profile().race == "Elf",
-        "obsolete colour-only setting migrates to automatic without touching combos " .. colour);
+    check(legacySettings.appearanceMode == nil and legacySettings.uiTheme == nil
+        and legacySettings.seqs == ui.settings.seqs and theme.Profile().race == "Dwarf",
+        "obsolete colour-only setting is removed while preserving manual choices and combos " .. colour);
 end
 local existingBlue = { uiTheme = "blue" };
 theme.Configure(existingBlue, player);
-check(existingBlue.appearanceMode == "automatic" and existingBlue.uiStyle == "custom"
+check(existingBlue.appearanceMode == nil and existingBlue.uiStyle == nil
     and existingBlue.uiTheme == nil, "old standalone colour setting migrates to theme-controlled colours");
 local brokenAppearance = { appearanceMode = "invalid"; appearanceRace = "invalid";
     appearanceClass = "invalid"; uiStyle = "invalid" };
 theme.Configure(brokenAppearance, player);
-check(brokenAppearance.appearanceMode == "automatic" and brokenAppearance.appearanceRace == "automatic"
-    and brokenAppearance.appearanceClass == "automatic" and brokenAppearance.uiStyle == "custom",
+check(brokenAppearance.appearanceMode == nil and brokenAppearance.appearanceRace == "automatic"
+    and brokenAppearance.appearanceClass == "automatic" and brokenAppearance.uiStyle == nil,
     "invalid appearance settings normalize to supported choices");
 ui.settings.uiStyle, ui.settings.appearanceMode = "custom", "automatic";
 ui.ApplyTheme();
@@ -1420,12 +1434,11 @@ check(button.themeFace:GetWidth() == 117 and button.themeEdges[2].y == 25,
     "custom button frame and text track control size");
 ui.settings.uiStyle = "classic";
 ui.ApplyTheme();
-check(not ui.win.themeBody:IsVisible() and not editor.themeHeader:IsVisible()
-    and not share.themeBody:IsVisible(), "classic style removes custom window artwork");
-check(button.themeNative:IsVisible() and not button.themeFace:IsVisible(),
-    "classic button uses its native LOTRO face");
-button.themeNative:Click();
-check(activations == 4, "classic button routes through the same action");
+check(ui.win.themeBody:IsVisible() and editor.themeHeader:IsVisible()
+    and share.themeBody:IsVisible() and ui.settings.uiStyle == nil,
+    "legacy classic setting cannot disable the decorative skin");
+check(not button.themeNative:IsVisible() and button.themeFace:IsVisible(),
+    "decorative button remains active after migrating classic settings");
 local themedWindow = Turbine.UI.Lotro.Window();
 theme.DecorateWindow(themedWindow);
 themedWindow:SetSize(460, 350); themedWindow:SetText("Theme test");
@@ -1494,8 +1507,9 @@ Turbine.PluginData.Save = function(_, name, value)
 end;
 local priorCombos = ui.settings.seqs;
 local priorState = ui.states[1];
-latestMenu(function() options.appearanceButton:Click(); end)[4]:Click();
-check(ui.settings.appearanceMode == "raceClass", "options selects combined race/class mode");
+check(options.styleButton == nil and options.appearanceButton == nil
+    and options.raceButton:IsEnabled() and options.classThemeButton:IsEnabled(),
+    "race and class selectors are available directly without style or mode controls");
 latestMenu(function() options.raceButton:Click(); end)[5]:Click();
 check(ui.settings.appearanceRace == "Dwarf" and theme.Profile().race == "Dwarf",
     "options manual race applies without reload");
@@ -1509,20 +1523,18 @@ check(savedAppearance.appearanceRace == "Dwarf" and savedAppearance.appearanceCl
     "theme choices persist in character settings");
 check(ui.settings.seqs == priorCombos and ui.states[1] == priorState,
     "appearance changes do not rebuild combo data or progress");
-options.styleButton:Click();
-check(ui.settings.uiStyle == "classic" and not options.raceButton:IsEnabled()
-    and not options.classThemeButton:IsEnabled() and not options.appearanceButton:IsEnabled(),
-    "classic style disables irrelevant decorative controls");
-options.styleButton:Click();
-check(ui.settings.appearanceRace == "Dwarf" and options.raceButton:IsEnabled(),
-    "restoring decorative style retains previous profile");
-latestMenu(function() options.appearanceButton:Click(); end)[1]:Click();
-check(not options.raceButton:IsEnabled() and not options.classThemeButton:IsEnabled(),
-    "automatic mode locks manual selectors");
-check(options.themeButton == nil and #theme.modes == 4,
-    "redundant colour button and colour-only mode are removed");
+latestMenu(function() options.raceButton:Click(); end)[1]:Click();
+check(theme.Profile().race == "Elf" and theme.Profile().class == "Brawler",
+    "automatic race restores detection without resetting manual class");
+latestMenu(function() options.classThemeButton:Click(); end)[1]:Click();
+check(theme.Profile().race == "Elf" and theme.Profile().class == "Hunter"
+    and options.raceButton:IsEnabled() and options.classThemeButton:IsEnabled(),
+    "both automatic selectors remain freely editable");
+check(options.themeButton == nil, "redundant colour button is removed");
 local pluginOptions = plugin.GetOptionsPanel();
-check(pluginOptions.styleButton and pluginOptions.classThemeButton, "plugin-manager options expose appearance controls");
+check(pluginOptions.raceButton and pluginOptions.classThemeButton
+    and not pluginOptions.styleButton and not pluginOptions.appearanceButton,
+    "plugin-manager options expose only direct race/class controls");
 check(pluginOptions.themeButton == nil, "plugin-manager options also omit the colour button");
 check(pluginOptions:GetHeight() >= pluginOptions.appearanceStatus.y + pluginOptions.appearanceStatus:GetHeight(),
     "plugin-manager panel contains appearance status");
@@ -1534,8 +1546,8 @@ for _, control in ipairs(controls) do
         skinOptionsWindow = control;
     end
 end
-check(skinOptionsWindow and skinOptionsWindow:GetHeight() >= 508 and skinOptionsWindow.themeBody:IsVisible(),
-    "standalone options window fits the expanded themed panel");
+check(skinOptionsWindow and skinOptionsWindow:GetHeight() == 444 and skinOptionsWindow.themeBody:IsVisible(),
+    "standalone options window fits the compact race/class panel");
 for _, control in ipairs({ ui.win, editor, share, skinOptionsWindow }) do
     check(control.themeHeader:GetWidth() == control:GetWidth(), "header matches its window width");
     check(control.themeBadge.x + 28 <= control:GetWidth(), "class badge stays within header");
@@ -1576,15 +1588,15 @@ options.applyScale();
 local oldLanguage = Turbine.Engine.GetLanguage;
 for _, language in ipairs({ Turbine.Language.English, Turbine.Language.German, Turbine.Language.French }) do
     Turbine.Engine.GetLanguage = function() return language; end;
-    for _, kind in ipairs({ { "mode", theme.modes }, { "name", theme.races }, { "name", theme.classes } }) do
+    for _, kind in ipairs({ { "name", theme.races }, { "name", theme.classes } }) do
         for _, name in ipairs(kind[2]) do
             local key = "theme." .. kind[1] .. "." .. name;
             check(ComboNextL(key) ~= key, "localized theme choice " .. key);
         end
     end
     options:RefreshValues();
-    check(not string.find(options.styleButton:GetText(), "theme%.")
-        and not string.find(options.appearanceButton:GetText(), "theme%."),
+    check(not string.find(options.raceButton:GetText(), "theme%.")
+        and not string.find(options.classThemeButton:GetText(), "theme%."),
         "appearance controls resolve translated text");
     profile = theme.Resolve({ appearanceMode = "automatic" }, unreadable, gameplay);
     check(profile.warning and not string.find(profile.warning, "theme%."),

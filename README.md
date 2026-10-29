@@ -12,7 +12,7 @@ ComboNext is a player-created combo advisor for **The Lord of the Rings Online**
 - Choose trigger skills from the class skill catalog or drag shortcuts from your action bar.
 - Share combo configurations by exporting text to copy or importing text from another player.
 - Customize the advisor's opacity, scale, theme, reset timer, and finisher display.
-- Use a decorative race/class skin across the advisor, editor, options, and sharing windows, or switch to Classic.
+- Use a decorative race/class skin across the advisor, editor, options, and sharing windows.
 - Optionally hide finishers until ready, using skill cooldowns and player-configured item timers.
 - Assign combo priorities from 1 (highest) to 9 (lowest), with equal priorities allowed.
 - Use the English, German, or French interface.
@@ -52,35 +52,30 @@ Use **Combo Slots** and its **- / +** buttons in **OPTIONS** to decrease or
 increase the number of visible recommendation slots, from 1 to 9, without
 cycling through every value. Changes apply immediately and are saved.
 
-Open **OPTIONS** (or the plugin manager's options panel). **Window style** switches
-between the new **Decorative** skin and **Classic** LOTRO controls immediately,
-including windows already open. Appearance settings are saved per character;
-switching styles does not change combos, priorities, triggers, or matched progress.
+Open **OPTIONS** (or the plugin manager's options panel) to choose **Race** and
+**Class** directly. Both selectors are always available, with **Automatic** as the
+default for each. Choose any race and class independently, or return either one
+to Automatic without resetting the other. Changes apply immediately to open
+windows and are saved per character without changing combos, priorities,
+triggers, or matched progress.
 
 The decorative skin uses dark opaque panels, ornamental headers, warm text,
 race accents and an optional class badge. It includes its own original artwork
 and does **not** require StatCaps.
 
-| Appearance | Result |
-| --- | --- |
-| Automatic race + class | Detect your character's race for the accent/emblem and class for the badge. |
-| Race theme | Choose a race accent/emblem, without a class badge. |
-| Class theme | Choose a class accent/badge with the neutral Gondorian emblem. |
-| Race theme + class badge | Select the race and class independently; either selector can remain Automatic. |
-
-The selected theme controls panel tints, borders, button accents, and advisor
-highlights automatically; there is no separate Colors option. Race and combined
-race/class modes use the race palette, while Class theme uses the class palette.
-Old standalone color selections and Colour only mode migrate to Automatic on
-update without changing combos. Manual choices include all twelve
+Race controls panel tints, borders, button accents, advisor highlights, and the
+race emblem; Class controls the colored class badge. Automatic detects the
+corresponding character attribute. There are no separate Window style, Appearance
+mode, or Colors controls: the decorative skin stays enabled. Legacy style/mode
+settings are removed on update while valid manual race/class choices are retained.
+Manual choices include all twelve
 classes and Gondorian, Man, Elf, Dwarf, Hobbit, Beorning, High Elf, Stout-axe, and
 River Hobbit race themes. Gondorian is a decorative theme, not a separate detected
 game race.
 
 If LOTRO does not expose a recognized race or class, the options status explains
 the fallback: the neutral Gondorian theme and/or no class badge. Choose a manual
-mode to override unavailable detection. Manual decorative choices are retained
-when Classic is selected. Window headers remain draggable; auxiliary windows
+race or class to override unavailable detection. Window headers remain draggable; auxiliary windows
 have a close button and support Escape. Interface scaling keeps the editor within
 the available screen height, including 1280x720 displays.
 

@@ -11,21 +11,12 @@ T.races = { "Gondorian", "Man", "Elf", "Dwarf", "Hobbit", "Beorning",
     "HighElf", "StoutAxe", "RiverHobbit" };
 T.classes = { "Beorning", "Brawler", "Burglar", "Captain", "Champion", "Guardian",
     "Hunter", "LoreMaster", "Mariner", "Minstrel", "RuneKeeper", "Warden" };
-T.modes = { "automatic", "race", "class", "raceClass" };
 local raceColours = {
     Gondorian = { 0.78, 0.65, 0.40 }; Man = { 0.82, 0.69, 0.44 };
     Elf = { 0.62, 0.79, 0.65 }; Dwarf = { 0.83, 0.61, 0.36 };
     Hobbit = { 0.78, 0.70, 0.43 }; Beorning = { 0.81, 0.64, 0.43 };
     HighElf = { 0.75, 0.78, 0.94 }; StoutAxe = { 0.86, 0.55, 0.36 };
     RiverHobbit = { 0.54, 0.79, 0.76 };
-};
-local classColours = {
-    Beorning = { 0.88, 0.69, 0.43 }; Brawler = { 0.86, 0.70, 0.50 };
-    Burglar = { 0.80, 0.69, 0.88 }; Captain = { 0.88, 0.80, 0.49 };
-    Champion = { 0.92, 0.60, 0.47 }; Guardian = { 0.70, 0.82, 0.92 };
-    Hunter = { 0.65, 0.83, 0.54 }; LoreMaster = { 0.60, 0.82, 0.78 };
-    Mariner = { 0.54, 0.80, 0.89 }; Minstrel = { 0.90, 0.74, 0.86 };
-    RuneKeeper = { 0.71, 0.73, 0.97 }; Warden = { 0.85, 0.73, 0.51 };
 };
 local painters = setmetatable({}, { __mode = "k" });
 local profile = { race = "Gondorian"; colour = raceColours.Gondorian; custom = true };
@@ -47,35 +38,28 @@ local function Detect(player, method, enum, names)
 end
 
 function T.Resolve(settings, player, gameplay)
-    local mode = Contains(T.modes, settings.appearanceMode) and settings.appearanceMode or "automatic";
     local race = Contains(T.races, settings.appearanceRace) and settings.appearanceRace or nil;
     local className = Contains(T.classes, settings.appearanceClass) and settings.appearanceClass or nil;
     local warnings = {};
-    if (mode == "automatic" or (mode ~= "class" and not race)) then
+    if (not race) then
         race = Detect(player, "GetRace", gameplay.Race, T.races);
         if (not race) then warnings[#warnings + 1] = L("theme.raceUnknown"); end
     end
-    if (mode == "automatic" or ((mode == "class" or mode == "raceClass") and not className)) then
+    if (not className) then
         className = Detect(player, "GetClass", gameplay.Class, T.classes);
         if (not className) then warnings[#warnings + 1] = L("theme.classUnknown"); end
     end
     race = race or "Gondorian";
-    if (mode == "race") then className = nil; end
-    if (mode == "class") then race = "Gondorian"; end
     return {
-        mode = mode; race = race; class = className; custom = settings.uiStyle ~= "classic";
-        colour = mode == "class" and className and classColours[className] or raceColours[race];
+        race = race; class = className; custom = true;
+        colour = raceColours[race];
         warning = #warnings > 0 and table.concat(warnings, " ") or nil;
     };
 end
 
 function T.Configure(settings, player)
-    if (settings.uiStyle ~= "classic" and settings.uiStyle ~= "custom") then
-        settings.uiStyle = "custom";
-    end
-    if (not Contains(T.modes, settings.appearanceMode)) then
-        settings.appearanceMode = "automatic";
-    end
+    settings.uiStyle = nil;
+    settings.appearanceMode = nil;
     settings.uiTheme = nil;
     if (not Contains(T.races, settings.appearanceRace)) then settings.appearanceRace = "automatic"; end
     if (not Contains(T.classes, settings.appearanceClass)) then settings.appearanceClass = "automatic"; end
@@ -124,7 +108,6 @@ local function CloseOnEscape(control, args)
     end
 end
 
--- A native button remains available in classic mode; both faces share one handler.
 function T.Button()
     local button = Turbine.UI.Control();
     local native = Turbine.UI.Lotro.Button();

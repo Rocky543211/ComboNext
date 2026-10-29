@@ -2419,11 +2419,11 @@ OpenOptionsWindow = function()
         optionsWindow:SetText(L("main.optionsTitle"));
         optionsWindow:SetWantsKeyEvents(true);
         optionsWindow.KeyDown = onHudKey;
-        optionsWindow:SetSize(430, 508);
+        optionsWindow:SetSize(430, 444);
         optionsWindow:SetScale(GetEffectiveUiScale());
         optionsWindow:SetPosition(
             math.max(0, math.floor((Turbine.UI.Display.GetWidth() - 430) / 2)),
-            math.max(0, math.floor((Turbine.UI.Display.GetHeight() - 508) / 2))
+            math.max(0, math.floor((Turbine.UI.Display.GetHeight() - 444) / 2))
         );
 
         local panel = CreateOptionsPanel();

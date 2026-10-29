@@ -16,7 +16,7 @@ function ComboNextOptionsPanel:Constructor(settings, saveSettings, refresh, appl
     self.refresh = refresh;
     self.applyScale = applyScale;
     self.applyTheme = applyTheme;
-    self:SetSize(390, 462);
+    self:SetSize(390, 398);
 
     local function AddLabel(text, x, y, w, h, color)
         local label = Turbine.UI.Label();
@@ -88,23 +88,6 @@ function ComboNextOptionsPanel:Constructor(settings, saveSettings, refresh, appl
         self.saveSettings();
         self.refresh();
     end);
-    self.styleButton = AddButton("", 12, 276, 366, function()
-        self.settings.uiStyle = self.settings.uiStyle == "classic" and "custom" or "classic";
-        self:ApplyAppearance();
-    end);
-    self.appearanceButton = AddButton("", 12, 308, 366, function()
-        local menu = Turbine.UI.ContextMenu();
-        for _, mode in ipairs(ComboNextTheme.modes) do
-            local chosen = mode;
-            local item = Turbine.UI.MenuItem(L("theme.mode." .. chosen));
-            item.Click = function()
-                self.settings.appearanceMode = chosen;
-                self:ApplyAppearance();
-            end;
-            menu:GetItems():Add(item);
-        end
-        menu:ShowMenu();
-    end);
     local function ProfileMenu(kind, values)
         local menu = Turbine.UI.ContextMenu();
         local choices = { "automatic" };
@@ -120,15 +103,15 @@ function ComboNextOptionsPanel:Constructor(settings, saveSettings, refresh, appl
         end
         menu:ShowMenu();
     end
-    self.raceButton = AddButton("", 12, 340, 366, function()
+    self.raceButton = AddButton("", 12, 276, 366, function()
         ProfileMenu("appearanceRace", ComboNextTheme.races);
     end);
-    self.classThemeButton = AddButton("", 12, 372, 366, function()
+    self.classThemeButton = AddButton("", 12, 308, 366, function()
         ProfileMenu("appearanceClass", ComboNextTheme.classes);
     end);
-    self.appearanceStatus = AddLabel("", 12, 404, 366, 38);
+    self.appearanceStatus = AddLabel("", 12, 340, 366, 38);
     self.appearanceStatus:SetFont(Turbine.UI.Lotro.Font.Verdana10);
-    AddLabel(L("options.scaleHint"), 12, 444, 366, 18);
+    AddLabel(L("options.scaleHint"), 12, 380, 366, 18);
 
     self:RefreshValues();
 end
@@ -220,18 +203,9 @@ function ComboNextOptionsPanel:RefreshValues()
     self.readyButton:SetText(L(self.settings.readyOnly and "options.readyOnly"
         or "options.showCooldowns"));
     local profile = ComboNextTheme.Profile();
-    local mode = profile.mode or "automatic";
-    self.styleButton:SetText(L("theme.style", L(self.settings.uiStyle == "classic"
-        and "theme.classic" or "theme.custom")));
-    self.appearanceButton:SetText(L("theme.mode", L("theme.mode." .. mode)));
     self.raceButton:SetText(L("theme.race", L("theme.name." .. (self.settings.appearanceRace or "automatic"))));
     self.classThemeButton:SetText(L("theme.class", L("theme.name." .. (self.settings.appearanceClass or "automatic"))));
-    local custom = self.settings.uiStyle ~= "classic";
-    self.appearanceButton:SetEnabled(custom);
-    self.raceButton:SetEnabled(custom and (mode == "race" or mode == "raceClass"));
-    self.classThemeButton:SetEnabled(custom and (mode == "class" or mode == "raceClass"));
-    self.appearanceStatus:SetText(custom and (profile.warning or L("theme.resolved",
+    self.appearanceStatus:SetText(profile.warning or L("theme.resolved",
         L("theme.name." .. profile.race),
-        profile.class and L("theme.name." .. profile.class) or L("theme.noBadge")))
-        or L("theme.classicHint"));
+        profile.class and L("theme.name." .. profile.class) or L("theme.noBadge")));
 end
