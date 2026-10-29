@@ -6,11 +6,21 @@ One version covers all changes made on the same calendar day in the maintainer's
 local time. All changes on 2026-10-25, including further updates that day, are
 version 1.4. Advance the version only on a later day with changes.
 Earlier 1.0-1.2 entries were reconstructed from the feature set and are approximate.
-Today's intermediate version labels are consolidated below; Git history is unchanged.
+The 2026-10-25 intermediate version labels are consolidated below; Git history is unchanged.
 
 ## [Unreleased]
 
 - No unreleased changes yet.
+
+## [1.5] - 2026-10-29
+
+- Restyled the advisor, combo editor, options, and sharing windows with standalone dark decorative panels, ornamental headers, race emblems, and class badges. Original bundled TGA artwork has no StatCaps dependency.
+- Added live Decorative/Classic switching and automatic, race-only, class-only, combined race/class, and colour-only appearance modes in both options surfaces. Manual choices cover nine race themes and all twelve classes.
+- Retained existing non-default colour choices on update. Unavailable race/class detection is explained in the options status instead of guessing a character identity.
+- Added consistent button hover, pressed, disabled, and keyboard-focus states, native text input, draggable headers, close buttons, and Escape support for auxiliary windows.
+- Kept combo configuration, priorities, trigger logic, readiness filtering, sharing, and matched progress unchanged by appearance settings.
+- Adjusted automatic UI fitting to account for the full editor height on smaller screens.
+- Localized appearance controls in English, German, and French. Added mocked appearance/control/layout regressions and standalone artwork reproducibility, format, and text-contrast checks; in-game rendering still requires validation in LOTRO.
 
 ## [1.4] - 2026-10-25
 

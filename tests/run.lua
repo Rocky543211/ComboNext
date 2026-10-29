@@ -12,17 +12,32 @@ function methods:SetPosition(x, y) self.x, self.y = x, y; end
 function methods:GetPosition() return self.x or 0, self.y or 0; end
 function methods:SetText(text) self.text = text; end
 function methods:GetText() return self.text or ""; end
-function methods:SetVisible(value) self.visible = value; end
+function methods:SetVisible(value)
+    local changed = self.visible ~= value;
+    self.visible = value;
+    if (changed and self.VisibleChanged) then self:VisibleChanged({}); end
+end
 function methods:IsVisible() return self.visible; end
-function methods:SetEnabled(value) self.enabled = value; end
+function methods:SetEnabled(value)
+    local changed = self.enabled ~= value;
+    self.enabled = value;
+    if (changed and self.EnabledChanged) then self:EnabledChanged({}); end
+end
+function methods:IsEnabled() return self.enabled ~= false; end
 function methods:SetShortcut(value) self.shortcut = value; end
 function methods:GetShortcut() return self.shortcut; end
 function methods:SetWantsUpdates(value) self.updates = value; end
 function methods:GetItems() return self.items; end
 function methods:SetParent(parent) self.parent = parent; end
-for _, name in ipairs({ "SetBackColor", "SetForeColor", "SetBackground", "SetFont",
+function methods:GetParent() return self.parent; end
+function methods:SetBackground(value) self.background = value; end
+function methods:SetBackColor(value) self.backColor = value; end
+function methods:SetForeColor(value) self.foreColor = value; end
+function methods:SetScale(value) self.scale = value; end
+function methods:SetFont(value) self.font = value; end
+for _, name in ipairs({
     "SetTextAlignment", "SetMouseVisible", "SetZOrder", "SetAllowDrop", "SetOpacity",
-    "SetScale", "SetWantsKeyEvents", "SetMultiline", "SelectAll", "Focus", "ShowMenu",
+    "SetWantsKeyEvents", "SetMultiline", "SelectAll", "Focus", "Activate", "ShowMenu",
     "SetStretchMode", "SetBlendMode", "SetFontStyle", "SetReadOnly", "SetMaxLength",
     "SetMarkupEnabled", "SetOutlineColor", "SetSuccessful" }) do
     methods[name] = function() end;
@@ -1297,5 +1312,274 @@ editor.classValueText:SetText("7");
 editor.classValueSave:Click();
 check(ui.settings.seqs[1].skills[1].classValue == 7 and hunterPresets[5].classValue == 5,
     "editing assigned preset does not modify the catalog tier");
-check(ComboNextConstants.version == "1.4", "additional same-day changes remain version 1.4");
+check(ComboNextConstants.version == "1.5", "new-day graphical release uses version 1.5");
+local theme = ComboNextTheme;
+local gameplay = Turbine.Gameplay;
+gameplay.Race = {};
+for index, race in ipairs(theme.races) do gameplay.Race[race] = index; end
+for index, className in ipairs(theme.classes) do gameplay.Class[className] = index; end
+player.GetRace = function(self) return self.race; end;
+player.race, player.class = gameplay.Race.Elf, gameplay.Class.Hunter;
+local profile = theme.Resolve({ appearanceMode = "automatic" }, player, gameplay);
+check(profile.race == "Elf" and profile.class == "Hunter" and not profile.warning,
+    "automatic appearance detects race and class");
+check(profile.custom, "decorative skin defaults on");
+for _, race in ipairs(theme.races) do
+    profile = theme.Resolve({ appearanceMode = "race"; appearanceRace = race }, player, gameplay);
+    check(profile.race == race and profile.class == nil and not profile.warning,
+        "manual race theme " .. race);
+end
+for _, className in ipairs(theme.classes) do
+    profile = theme.Resolve({ appearanceMode = "class"; appearanceClass = className }, player, gameplay);
+    check(profile.race == "Gondorian" and profile.class == className and not profile.warning,
+        "manual class theme " .. className);
+end
+profile = theme.Resolve({ appearanceMode = "raceClass"; appearanceRace = "Dwarf";
+    appearanceClass = "RuneKeeper" }, player, gameplay);
+check(profile.race == "Dwarf" and profile.class == "RuneKeeper" and not profile.warning,
+    "combined manual race and class profile");
+profile = theme.Resolve({ appearanceMode = "automatic"; appearanceRace = "Dwarf";
+    appearanceClass = "RuneKeeper" }, player, gameplay);
+check(profile.race == "Elf" and profile.class == "Hunter", "automatic mode ignores manual overrides");
+profile = theme.Resolve({ appearanceMode = "raceClass" }, player, gameplay);
+check(profile.race == "Elf" and profile.class == "Hunter", "manual combined mode supports automatic selectors");
+local unreadable = { GetRace = function() error("unknown race"); end;
+    GetClass = function() return -1; end };
+profile = theme.Resolve({ appearanceMode = "automatic" }, unreadable, gameplay);
+check(profile.race == "Gondorian" and profile.class == nil and profile.warning,
+    "missing detection has explicit neutral fallback and warning");
+profile = theme.Resolve({ appearanceMode = "race"; appearanceRace = "Hobbit" }, unreadable, gameplay);
+check(not profile.warning, "race-only mode never demands an unavailable class");
+profile = theme.Resolve({ appearanceMode = "class"; appearanceClass = "Brawler" }, unreadable, gameplay);
+check(not profile.warning, "class-only mode never demands an unavailable race");
+for _, colour in ipairs(ComboNextConstants.uiThemes) do
+    profile = theme.Resolve({ appearanceMode = "colour"; uiTheme = colour;
+        appearanceRace = "Dwarf"; appearanceClass = "Brawler" }, unreadable, gameplay);
+    check(profile.race == "Gondorian" and not profile.class and not profile.warning,
+        "colour-only theme does not need character attributes " .. colour);
+end
+local existingBlue = { uiTheme = "blue" };
+theme.Configure(existingBlue, player);
+check(existingBlue.appearanceMode == "colour" and existingBlue.uiStyle == "custom",
+    "existing nondefault colour selection survives appearance migration");
+local brokenAppearance = { appearanceMode = "invalid"; appearanceRace = "invalid";
+    appearanceClass = "invalid"; uiStyle = "invalid" };
+theme.Configure(brokenAppearance, player);
+check(brokenAppearance.appearanceMode == "automatic" and brokenAppearance.appearanceRace == "automatic"
+    and brokenAppearance.appearanceClass == "automatic" and brokenAppearance.uiStyle == "custom",
+    "invalid appearance settings normalize to supported choices");
+ui.settings.uiStyle, ui.settings.appearanceMode = "custom", "automatic";
+ui.ApplyTheme();
+check(ui.win.themeBody:IsVisible() and editor.themeBody:IsVisible() and share.themeBody:IsVisible(),
+    "all existing windows adopt the decorative style");
+check(ui.win.themeEmblem.background == "ComboNext/Resources/race_Elf.tga"
+    and editor.themeBadge.background == "ComboNext/Resources/class_Hunter.tga",
+    "resolved race emblem and class badge reach existing windows");
+local button = theme.Button();
+button:SetSize(125, 26); button:SetText("Test action");
+local activations = 0;
+button.Click = function() activations = activations + 1; end;
+button:MouseClick({ Button = 2 });
+check(activations == 0, "themed button ignores right clicks");
+button:MouseEnter();
+button:MouseDown({ Button = 1 });
+button:MouseUp({ Button = 1 });
+button:MouseClick({ Button = 1 });
+check(activations == 1, "custom button activates exactly once per left click");
+button:FocusGained();
+button:KeyDown({ Key = 13 });
+button:KeyDown({ Key = 32 });
+check(activations == 3, "custom button supports Enter and Space");
+button:SetEnabled(false);
+local disabledColour = button.themeFace.foreColor;
+button:MouseClick({ Button = 1 });
+button:KeyDown({ Key = 13 });
+button:FocusLost(); button:MouseLeave();
+check(activations == 3 and disabledColour[1] < 0.8, "disabled button remains visibly disabled and inert");
+button:SetEnabled(true);
+check(button.themeFace.foreColor[1] > disabledColour[1], "re-enabled button restores readable text");
+check(button.themeFace:GetWidth() == 117 and button.themeEdges[2].y == 25,
+    "custom button frame and text track control size");
+ui.settings.uiStyle = "classic";
+ui.ApplyTheme();
+check(not ui.win.themeBody:IsVisible() and not editor.themeHeader:IsVisible()
+    and not share.themeBody:IsVisible(), "classic style removes custom window artwork");
+check(button.themeNative:IsVisible() and not button.themeFace:IsVisible(),
+    "classic button uses its native LOTRO face");
+button.themeNative:Click();
+check(activations == 4, "classic button routes through the same action");
+local themedWindow = Turbine.UI.Lotro.Window();
+theme.DecorateWindow(themedWindow);
+themedWindow:SetSize(460, 350); themedWindow:SetText("Theme test");
+ui.settings.uiStyle = "custom"; ui.ApplyTheme();
+check(themedWindow.themeCaption:GetText() == "Theme test" and themedWindow.themeClose.x == 431,
+    "decorative window preserves caption and lays out close button");
+themedWindow:SetVisible(true);
+themedWindow.themeClose:MouseClick({ Button = 1 });
+check(not themedWindow:IsVisible(), "decorative close button hides its own window");
+themedWindow:SetVisible(true);
+themedWindow:KeyDown({ Key = 27 });
+check(not themedWindow:IsVisible(), "decorative window supports Escape");
+button:SetParent(themedWindow);
+themedWindow:SetVisible(true);
+button:KeyDown({ Key = 27 });
+check(not themedWindow:IsVisible(), "Escape closes an auxiliary window from a focused custom button");
+themedWindow:SetVisible(true);
+button.themeNative:KeyDown({ Key = 27 });
+check(not themedWindow:IsVisible(), "Escape closes an auxiliary window from a focused native button");
+local themedInput = theme.TextBox();
+themedInput:SetParent(themedWindow);
+themedWindow:SetVisible(true);
+themedInput:KeyDown({ Key = 27 });
+check(not themedWindow:IsVisible(), "Escape closes an auxiliary window from native text input");
+local oldMouse, oldWidth, oldHeight = Turbine.UI.Display.GetMousePosition,
+    Turbine.UI.Display.GetWidth, Turbine.UI.Display.GetHeight;
+local mx, my = 100, 100;
+Turbine.UI.Display.GetMousePosition = function() return mx, my; end;
+themedWindow:SetPosition(20, 20);
+themedWindow.themeHeader:MouseDown({ Button = 1 });
+mx, my = 200, 180;
+themedWindow.themeHeader:MouseMove();
+check(themedWindow.x == 120 and themedWindow.y == 100, "custom header drags the containing window");
+themedWindow.themeHeader:MouseUp();
+mx, my = 300, 240;
+themedWindow.themeHeader:MouseMove();
+check(themedWindow.x == 120, "dragging stops on mouse release");
+Turbine.UI.Display.GetWidth = function() return 1280; end;
+Turbine.UI.Display.GetHeight = function() return 720; end;
+theme.scale = 1;
+themedWindow.themeHeader:MouseDown({ Button = 1 });
+mx, my = 10000, 10000;
+themedWindow.themeHeader:MouseMove();
+check(themedWindow.x == 820 and themedWindow.y == 370, "dragging clamps to screen dimensions");
+themedWindow.themeHeader:MouseUp();
+themedWindow:SetVisible(true);
+themedWindow.themeHeader:MouseDown({ Button = 1 });
+themedWindow:SetVisible(false); themedWindow:SetVisible(true);
+mx, my = 0, 0;
+themedWindow.themeHeader:MouseMove();
+check(themedWindow.x == 820 and themedWindow.y == 370, "hide/reopen cancels an unfinished header drag");
+Turbine.UI.Display.GetMousePosition = oldMouse;
+Turbine.UI.Display.GetWidth, Turbine.UI.Display.GetHeight = oldWidth, oldHeight;
+
+local function latestMenu(click)
+    local start = #controls + 1;
+    click();
+    for index = start, #controls do
+        if (#controls[index]:GetItems() > 0) then return controls[index]:GetItems(); end
+    end
+    error("menu not found");
+end
+local savedAppearance, saveAppearanceBefore = nil, Turbine.PluginData.Save;
+Turbine.PluginData.Save = function(_, name, value)
+    if (name == "ComboNext") then savedAppearance = value; end
+end;
+local priorCombos = ui.settings.seqs;
+local priorState = ui.states[1];
+latestMenu(function() options.appearanceButton:Click(); end)[4]:Click();
+check(ui.settings.appearanceMode == "raceClass", "options selects combined race/class mode");
+latestMenu(function() options.raceButton:Click(); end)[5]:Click();
+check(ui.settings.appearanceRace == "Dwarf" and theme.Profile().race == "Dwarf",
+    "options manual race applies without reload");
+latestMenu(function() options.classThemeButton:Click(); end)[3]:Click();
+check(ui.settings.appearanceClass == "Brawler" and theme.Profile().class == "Brawler",
+    "options manual class applies without reload");
+check(editor.themeBadge.background == "ComboNext/Resources/class_Brawler.tga"
+    and share.themeEmblem.background == "ComboNext/Resources/race_Dwarf.tga",
+    "manual changes update editor and sharing artwork");
+check(savedAppearance.appearanceRace == "Dwarf" and savedAppearance.appearanceClass == "Brawler",
+    "theme choices persist in character settings");
+check(ui.settings.seqs == priorCombos and ui.states[1] == priorState,
+    "appearance changes do not rebuild combo data or progress");
+options.styleButton:Click();
+check(ui.settings.uiStyle == "classic" and not options.raceButton:IsEnabled()
+    and not options.classThemeButton:IsEnabled() and not options.appearanceButton:IsEnabled(),
+    "classic style disables irrelevant decorative controls");
+options.styleButton:Click();
+check(ui.settings.appearanceRace == "Dwarf" and options.raceButton:IsEnabled(),
+    "restoring decorative style retains previous profile");
+latestMenu(function() options.appearanceButton:Click(); end)[1]:Click();
+check(not options.raceButton:IsEnabled() and not options.classThemeButton:IsEnabled(),
+    "automatic mode locks manual selectors");
+options.themeButton:Click();
+check(ui.settings.appearanceMode == "colour" and not theme.Profile().class,
+    "existing colour control switches to colour-only mode");
+local pluginOptions = plugin.GetOptionsPanel();
+check(pluginOptions.styleButton and pluginOptions.classThemeButton, "plugin-manager options expose appearance controls");
+check(pluginOptions:GetHeight() >= pluginOptions.appearanceStatus.y + pluginOptions.appearanceStatus:GetHeight(),
+    "plugin-manager panel contains appearance status");
+Turbine.PluginData.Save = saveAppearanceBefore;
+ui.settingsBtn:Click();
+local skinOptionsWindow;
+for _, control in ipairs(controls) do
+    if (control.themeCaption and control.themeCaption:GetText() == ComboNextL("main.optionsTitle")) then
+        skinOptionsWindow = control;
+    end
+end
+check(skinOptionsWindow and skinOptionsWindow:GetHeight() >= 508 and skinOptionsWindow.themeBody:IsVisible(),
+    "standalone options window fits the expanded themed panel");
+for _, control in ipairs({ ui.win, editor, share, skinOptionsWindow }) do
+    check(control.themeHeader:GetWidth() == control:GetWidth(), "header matches its window width");
+    check(control.themeBadge.x + 28 <= control:GetWidth(), "class badge stays within header");
+    local path = string.gsub(control.themeHeader.background, "^ComboNext/", "");
+    local file = io.open(path, "rb");
+    check(file ~= nil, "window header references a packaged artwork file " .. path);
+    if (file) then file:close(); end
+end
+for _, kind in ipairs({ { "race", theme.races }, { "class", theme.classes } }) do
+    for _, name in ipairs(kind[2]) do
+        local path = "Resources/" .. kind[1] .. "_" .. name .. ".tga";
+        local file = io.open(path, "rb");
+        check(file ~= nil, "every selectable theme has an emblem " .. path);
+        if (file) then file:close(); end
+    end
+end
+for _, control in ipairs(controls) do
+    if (control.themeNative and control.parent == editor) then
+        check(control.x >= 0 and control.y >= 34
+            and control.x + control:GetWidth() <= editor:GetWidth()
+            and control.y + control:GetHeight() <= editor:GetHeight(), "editor themed control fits existing layout");
+    end
+end
+local requestedScale = ui.settings.uiScale;
+Turbine.UI.Display.GetWidth = function() return 1280; end;
+Turbine.UI.Display.GetHeight = function() return 720; end;
+ui.settings.uiScale = 1.5;
+options.applyScale();
+for _, window in ipairs({ ui.win, editor, skinOptionsWindow }) do
+    check(window:GetHeight() * window.scale <= 696 and window:GetWidth() * window.scale <= 1256,
+        "scaled windows fit the Steam Deck viewport");
+    check(window.x >= 0 and window.y >= 0 and window.x + window:GetWidth() * window.scale <= 1280
+        and window.y + window:GetHeight() * window.scale <= 720, "scaled window remains on screen");
+end
+ui.settings.uiScale = requestedScale;
+Turbine.UI.Display.GetWidth, Turbine.UI.Display.GetHeight = oldWidth, oldHeight;
+options.applyScale();
+local oldLanguage = Turbine.Engine.GetLanguage;
+for _, language in ipairs({ Turbine.Language.English, Turbine.Language.German, Turbine.Language.French }) do
+    Turbine.Engine.GetLanguage = function() return language; end;
+    for _, kind in ipairs({ { "mode", theme.modes }, { "name", theme.races }, { "name", theme.classes } }) do
+        for _, name in ipairs(kind[2]) do
+            local key = "theme." .. kind[1] .. "." .. name;
+            check(ComboNextL(key) ~= key, "localized theme choice " .. key);
+        end
+    end
+    options:RefreshValues();
+    check(not string.find(options.styleButton:GetText(), "theme%.")
+        and not string.find(options.appearanceButton:GetText(), "theme%."),
+        "appearance controls resolve translated text");
+    profile = theme.Resolve({ appearanceMode = "automatic" }, unreadable, gameplay);
+    check(profile.warning and not string.find(profile.warning, "theme%."),
+        "unknown-character warning is localized");
+end
+Turbine.Engine.GetLanguage = oldLanguage;
+local ephemeral = setmetatable({}, { __mode = "v" });
+local function discardedControl()
+    local first = #controls + 1;
+    ephemeral[1] = theme.Button();
+    for index = #controls, first, -1 do controls[index] = nil; end
+end
+discardedControl();
+collectgarbage("collect"); collectgarbage("collect");
+check(ephemeral[1] == nil, "theme repaint registry does not retain discarded controls in Lua 5.1");
 print(tostring(count) .. " ComboNext assertions passed.");

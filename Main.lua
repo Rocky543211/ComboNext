@@ -6,6 +6,7 @@ import "ComboNext.Constants";
 import "ComboNext.ComboLogic";
 import "ComboNext.Localization";
 import "ComboNext.ClassTriggers";
+import "ComboNext.Theme";
 import "ComboNext.OptionsPanel";
 import "ComboNext.SequenceEditor";
 import "ComboNext.ComboShare";
@@ -26,7 +27,7 @@ local function GetEffectiveUiScale()
     local requested = settings.uiScale or 1;
     local fitScale = math.min(
         (Turbine.UI.Display.GetWidth() - 24) / 500,
-        (Turbine.UI.Display.GetHeight() - 24) / 500
+        (Turbine.UI.Display.GetHeight() - 24) / 696
     );
     return math.max(0.5, math.min(requested, fitScale));
 end
@@ -758,9 +759,12 @@ local function GetObservedSkill(message)
 end
 
 -- ========================= WINDOW =========================
+ComboNextTheme.Configure(settings, Turbine.Gameplay.LocalPlayer.GetInstance());
 ui.win = Turbine.UI.Window();
+ComboNextTheme.DecorateWindow(ui.win, true);
 ui.win:SetSize(WINDOW_WIDTH, WINDOW_HEIGHT);
 local currentUiScale = GetEffectiveUiScale();
+ComboNextTheme.scale = currentUiScale;
 ui.win:SetScale(currentUiScale);
 ui.win:SetPosition(
     math.max(0, math.min(
@@ -776,10 +780,10 @@ ui.win:SetBackColor(Turbine.UI.Color(0.3, 0.05, 0.05, 0.05));
 ui.win:SetOpacity(settings.opacity);
 ui.win:SetVisible(true);
 
-ui.setupBtn = Turbine.UI.Lotro.Button();
+ui.setupBtn = ComboNextTheme.Button();
 ui.setupBtn:SetParent(ui.win);
-ui.setupBtn:SetPosition(102, 6);
-ui.setupBtn:SetSize(70, 28);
+ui.setupBtn:SetPosition(132, 6);
+ui.setupBtn:SetSize(54, 28);
 ui.setupBtn:SetText(L("main.edit"));
 ui.setupBtn.Click = function()
     if (OpenSequenceEditor) then
@@ -791,8 +795,9 @@ end;
 
 ui.title = Turbine.UI.Label();
 ui.title:SetParent(ui.win);
-ui.title:SetPosition(12, 8);
-ui.title:SetSize(86, 24);
+ui.title:SetPosition(39, 8);
+ui.title:SetSize(90, 24);
+ui.title:SetFont(Turbine.UI.Lotro.Font.Verdana12 or Turbine.UI.Lotro.Font.Verdana10);
 ui.title:SetText("COMBONEXT");
 ui.title:SetForeColor(Turbine.UI.Color(1, 1, 0.75));
 ui.title:SetTextAlignment(Turbine.UI.ContentAlignment.MiddleLeft);
@@ -835,6 +840,14 @@ for _, target in ipairs({ ui.win, ui.title }) do
     target.MouseMove = MoveWindow;
     target.MouseUp = EndWindowDrag;
 end
+ui.win.themeHeader.MouseDown = BeginWindowDrag;
+ui.win.themeHeader.MouseMove = MoveWindow;
+ui.win.themeHeader.MouseUp = EndWindowDrag;
+local themeVisibilityChanged = ui.win.VisibleChanged;
+ui.win.VisibleChanged = function(...)
+    EndWindowDrag();
+    themeVisibilityChanged(...);
+end;
 
 local function MakeButton(parent, text, left, top, width, height, onClick)
     local button = Turbine.UI.Label();
@@ -870,18 +883,18 @@ ui.status:SetText(L("main.ready"));
 ui.setupMode = false;
 ui.captureTarget = nil;
 
-ui.settingsBtn = Turbine.UI.Lotro.Button();
+ui.settingsBtn = ComboNextTheme.Button();
 ui.settingsBtn:SetParent(ui.win);
-ui.settingsBtn:SetPosition(180, 6);
-ui.settingsBtn:SetSize(84, 28);
+ui.settingsBtn:SetPosition(190, 6);
+ui.settingsBtn:SetSize(78, 28);
 ui.settingsBtn:SetText(L("main.options"));
 ui.settingsBtn.Click = function()
     OpenOptionsWindow();
 end;
-ui.hideBtn = Turbine.UI.Lotro.Button();
+ui.hideBtn = ComboNextTheme.Button();
 ui.hideBtn:SetParent(ui.win);
 ui.hideBtn:SetPosition(272, 6);
-ui.hideBtn:SetSize(92, 28);
+ui.hideBtn:SetSize(82, 28);
 ui.hideBtn:SetText(L("main.hide"));
 ui.hideBtn.Click = function()
     ui.win:SetVisible(false);
@@ -1214,9 +1227,15 @@ end
 
 local highlightColor = Turbine.UI.Color(0.5, 0.0, 0.9, 0.0);
 ui.ApplyTheme = function()
+    local profile = ComboNextTheme.Configure(settings, Turbine.Gameplay.LocalPlayer.GetInstance());
     local theme = UI_THEMES[settings.uiTheme] or UI_THEMES.gold;
-    ui.win:SetBackColor(Turbine.UI.Color(unpack(theme.background)));
-    local accent = Turbine.UI.Color(1, unpack(theme.accent));
+    ui.win:SetBackColor(profile.custom and Turbine.UI.Color(1, 0.045, 0.06, 0.075)
+        or Turbine.UI.Color(unpack(theme.background)));
+    local accent = profile.custom and ComboNextTheme.Accent() or Turbine.UI.Color(1, unpack(theme.accent));
+    if (ui.launcher) then
+        ui.launcher:SetBackColor(profile.custom and Turbine.UI.Color(1, 0.045, 0.06, 0.075)
+            or Turbine.UI.Color(1, 0.025, 0.075, 0.065));
+    end
     local hover = Turbine.UI.Color(1, unpack(theme.hover));
     if (ui.title) then
         ui.title:SetForeColor(accent);
@@ -1225,12 +1244,12 @@ ui.ApplyTheme = function()
         button:SetForeColor(accent);
         button.themeHoverColor = hover;
     end
-    local statusColor = Turbine.UI.Color(1, unpack(theme.status));
+    local statusColor = profile.custom and ComboNextTheme.Text() or Turbine.UI.Color(1, unpack(theme.status));
     if (ui.diagnostic) then
         ui.diagnostic:SetForeColor(statusColor);
     end
     if (ui.status) then
-        ui.status:SetForeColor(Turbine.UI.Color(0.9, unpack(theme.status)));
+        ui.status:SetForeColor(statusColor);
     end
     if (sequenceEditor and sequenceEditor.ApplyTheme) then
         sequenceEditor:ApplyTheme(accent, statusColor);
@@ -1241,7 +1260,7 @@ ui.ApplyTheme = function()
     for _, choice in ipairs(ui.finisherChoices or {}) do
         choice.label:SetForeColor(accent);
     end
-    highlightColor = Turbine.UI.Color(unpack(theme.highlight));
+    highlightColor = profile.custom and ComboNextTheme.Accent() or Turbine.UI.Color(unpack(theme.highlight));
     ui.UpdateDisplay();
 end;
 
@@ -1448,6 +1467,7 @@ end
 
 ApplyUiScale = function()
     currentUiScale = GetEffectiveUiScale();
+    ComboNextTheme.scale = currentUiScale;
     for _, window in pairs({
         main = ui.win;
         launcher = ui.launcher;
@@ -2431,14 +2451,15 @@ end
 OpenOptionsWindow = function()
     if (not optionsWindow) then
         optionsWindow = Turbine.UI.Lotro.Window();
+        ComboNextTheme.DecorateWindow(optionsWindow);
         optionsWindow:SetText(L("main.optionsTitle"));
         optionsWindow:SetWantsKeyEvents(true);
         optionsWindow.KeyDown = onHudKey;
-        optionsWindow:SetSize(430, 348);
+        optionsWindow:SetSize(430, 508);
         optionsWindow:SetScale(GetEffectiveUiScale());
         optionsWindow:SetPosition(
             math.max(0, math.floor((Turbine.UI.Display.GetWidth() - 430) / 2)),
-            math.max(0, math.floor((Turbine.UI.Display.GetHeight() - 348) / 2))
+            math.max(0, math.floor((Turbine.UI.Display.GetHeight() - 508) / 2))
         );
 
         local panel = CreateOptionsPanel();
@@ -2840,7 +2861,11 @@ local lastHudToggle = -1;
 local toggleHudAction = Turbine.UI.Lotro.Action.ToggleHUD
     or Turbine.UI.Lotro.Action.UI_Toggle
     or 0x100000B3;
-onHudKey = function(_, args)
+onHudKey = function(window, args)
+    if (args.Key == 27 and window and window.themeClose) then
+        window:SetVisible(false);
+        return;
+    end
     if (args.Action ~= toggleHudAction) then
         return;
     end

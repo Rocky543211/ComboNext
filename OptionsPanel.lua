@@ -3,6 +3,7 @@ import "Turbine.UI";
 import "Turbine.UI.Lotro";
 import "ComboNext.Constants";
 import "ComboNext.Localization";
+import "ComboNext.Theme";
 
 local L = ComboNextL;
 
@@ -15,7 +16,7 @@ function ComboNextOptionsPanel:Constructor(settings, saveSettings, refresh, appl
     self.refresh = refresh;
     self.applyScale = applyScale;
     self.applyTheme = applyTheme;
-    self:SetSize(390, 298);
+    self:SetSize(390, 462);
 
     local function AddLabel(text, x, y, w, h, color)
         local label = Turbine.UI.Label();
@@ -23,13 +24,14 @@ function ComboNextOptionsPanel:Constructor(settings, saveSettings, refresh, appl
         label:SetPosition(x, y);
         label:SetSize(w, h);
         label:SetText(text);
+        label:SetMultiline(true);
         label:SetForeColor(color or Turbine.UI.Color(0.9, 0.9, 0.9));
         label:SetTextAlignment(Turbine.UI.ContentAlignment.MiddleLeft);
         return label;
     end
 
     local function AddButton(text, x, y, w, callback)
-        local button = Turbine.UI.Lotro.Button();
+        local button = ComboNextTheme.Button();
         button:SetParent(self);
         button:SetPosition(x, y);
         button:SetSize(w, 24);
@@ -89,9 +91,56 @@ function ComboNextOptionsPanel:Constructor(settings, saveSettings, refresh, appl
         self.saveSettings();
         self.refresh();
     end);
-    AddLabel(L("options.scaleHint"), 12, 272, 366, 18);
+    self.styleButton = AddButton("", 12, 276, 366, function()
+        self.settings.uiStyle = self.settings.uiStyle == "classic" and "custom" or "classic";
+        self:ApplyAppearance();
+    end);
+    self.appearanceButton = AddButton("", 12, 308, 366, function()
+        local menu = Turbine.UI.ContextMenu();
+        for _, mode in ipairs(ComboNextTheme.modes) do
+            local chosen = mode;
+            local item = Turbine.UI.MenuItem(L("theme.mode." .. chosen));
+            item.Click = function()
+                self.settings.appearanceMode = chosen;
+                self:ApplyAppearance();
+            end;
+            menu:GetItems():Add(item);
+        end
+        menu:ShowMenu();
+    end);
+    local function ProfileMenu(kind, values)
+        local menu = Turbine.UI.ContextMenu();
+        local choices = { "automatic" };
+        for _, value in ipairs(values) do choices[#choices + 1] = value; end
+        for _, value in ipairs(choices) do
+            local chosen = value;
+            local item = Turbine.UI.MenuItem(L("theme.name." .. chosen));
+            item.Click = function()
+                self.settings[kind] = chosen;
+                self:ApplyAppearance();
+            end;
+            menu:GetItems():Add(item);
+        end
+        menu:ShowMenu();
+    end
+    self.raceButton = AddButton("", 12, 340, 366, function()
+        ProfileMenu("appearanceRace", ComboNextTheme.races);
+    end);
+    self.classThemeButton = AddButton("", 12, 372, 366, function()
+        ProfileMenu("appearanceClass", ComboNextTheme.classes);
+    end);
+    self.appearanceStatus = AddLabel("", 12, 404, 366, 38);
+    self.appearanceStatus:SetFont(Turbine.UI.Lotro.Font.Verdana10);
+    AddLabel(L("options.scaleHint"), 12, 444, 366, 18);
 
     self:RefreshValues();
+end
+
+function ComboNextOptionsPanel:ApplyAppearance()
+    if (self.applyTheme) then self.applyTheme(); end
+    self:RefreshValues();
+    self.saveSettings();
+    self.refresh();
 end
 
 function ComboNextOptionsPanel:ChangeTimeout(direction)
@@ -158,6 +207,7 @@ function ComboNextOptionsPanel:ChangeTheme()
     end
     index = (index % #values) + 1;
     self.settings.uiTheme = values[index];
+    self.settings.appearanceMode = "colour";
     if (self.applyTheme) then
         self.applyTheme();
     end
@@ -179,4 +229,19 @@ function ComboNextOptionsPanel:RefreshValues()
     self.themeButton:SetText(L("options.theme", L("options.theme." .. (self.settings.uiTheme or "gold"))));
     self.readyButton:SetText(L(self.settings.readyOnly and "options.readyOnly"
         or "options.showCooldowns"));
+    local profile = ComboNextTheme.Profile();
+    local mode = profile.mode or "automatic";
+    self.styleButton:SetText(L("theme.style", L(self.settings.uiStyle == "classic"
+        and "theme.classic" or "theme.custom")));
+    self.appearanceButton:SetText(L("theme.mode", L("theme.mode." .. mode)));
+    self.raceButton:SetText(L("theme.race", L("theme.name." .. (self.settings.appearanceRace or "automatic"))));
+    self.classThemeButton:SetText(L("theme.class", L("theme.name." .. (self.settings.appearanceClass or "automatic"))));
+    local custom = self.settings.uiStyle ~= "classic";
+    self.appearanceButton:SetEnabled(custom);
+    self.raceButton:SetEnabled(custom and (mode == "race" or mode == "raceClass"));
+    self.classThemeButton:SetEnabled(custom and (mode == "class" or mode == "raceClass"));
+    self.appearanceStatus:SetText(custom and (profile.warning or L("theme.resolved",
+        L("theme.name." .. profile.race),
+        profile.class and L("theme.name." .. profile.class) or L("theme.noBadge")))
+        or L("theme.classicHint"));
 end

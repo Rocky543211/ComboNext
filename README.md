@@ -12,6 +12,7 @@ ComboNext is a player-created combo advisor for **The Lord of the Rings Online**
 - Choose trigger skills from the class skill catalog or drag shortcuts from your action bar.
 - Share combo configurations by exporting text to copy or importing text from another player.
 - Customize the advisor's opacity, scale, colors, reset timer, and finisher display.
+- Use a decorative race/class skin across the advisor, editor, options, and sharing windows, or switch to Classic.
 - Optionally hide finishers until ready, using skill cooldowns and player-configured item timers.
 - Assign combo priorities from 1 (highest) to 9 (lowest), with equal priorities allowed.
 - Use the English, German, or French interface.
@@ -19,7 +20,7 @@ ComboNext is a player-created combo advisor for **The Lord of the Rings Online**
 ## Install
 
 1. Download this repository (for example, choose **Code → Download ZIP** on GitHub) and extract it.
-2. Copy the `ComboNext` folder, including `ComboNext.plugin` and all `.lua` files, into your LOTRO plugins folder:
+2. Copy the `ComboNext` folder, including `ComboNext.plugin`, all `.lua` files, and the complete `Resources` directory, into your LOTRO plugins folder:
 
    `Documents/The Lord of the Rings Online/Plugins/ComboNext`
 
@@ -44,6 +45,38 @@ Useful slash commands:
 | `/combnext verify catalog` | Also verify the skill catalog |
 
 Use **Share combos** in the editor to export or import combo text. Imports can be added to the current combos or replace them; the editor also offers an undo option for an import.
+
+### Appearance
+
+Open **OPTIONS** (or the plugin manager's options panel). **Window style** switches
+between the new **Decorative** skin and **Classic** LOTRO controls immediately,
+including windows already open. Appearance settings are saved per character;
+switching styles does not change combos, priorities, triggers, or matched progress.
+
+The decorative skin uses dark opaque panels, ornamental headers, warm text,
+race accents and an optional class badge. It includes its own original artwork
+and does **not** require StatCaps.
+
+| Appearance | Result |
+| --- | --- |
+| Automatic race + class | Detect your character's race for the accent/emblem and class for the badge. |
+| Race theme | Choose a race accent/emblem, without a class badge. |
+| Class theme | Choose a class accent/badge with the neutral Gondorian emblem. |
+| Race theme + class badge | Select the race and class independently; either selector can remain Automatic. |
+| Colour only | Use the existing gold, blue, violet, or green colour selection, with a neutral emblem and no class badge. |
+
+The existing **Colors** button switches to Colour only. Previously selected
+non-default colors are retained on update. Manual choices include all twelve
+classes and Gondorian, Man, Elf, Dwarf, Hobbit, Beorning, High Elf, Stout-axe, and
+River Hobbit race themes. Gondorian is a decorative theme, not a separate detected
+game race.
+
+If LOTRO does not expose a recognized race or class, the options status explains
+the fallback: the neutral Gondorian theme and/or no class badge. Choose a manual
+mode to override unavailable detection. Manual decorative choices are retained
+when Classic is selected. Window headers remain draggable; auxiliary windows
+have a close button and support Escape. Interface scaling keeps the editor within
+the available screen height, including 1280x720 displays.
 
 ### Trigger logic
 
@@ -219,7 +252,15 @@ Class-trigger coverage also reports wrong-class, unavailable API, unconfirmed
 stance, and unsupported effect-language readings as **NOT CHECKED**.
 
 For local regression checks without LOTRO, run `lua tests/run.lua` from this
-folder. These use mocked game APIs; they do not replace in-game checks.
+folder. `luajit tests/run.lua` also checks Lua 5.1 compatibility.
+Run `python -B -m unittest discover -s tests -p 'test_*.py'` for packaged-artwork
+reproducibility, dimensions, and button-text contrast checks. The optional
+`python build_skin.py` command regenerates the bundled TGA artwork using only the
+Python standard library; `--preview /path/to/preview.png` also produces an artwork
+contact sheet, not a screenshot of the running plugin.
+
+These checks use mocked game APIs or inspect generated files; they do not replace
+in-game checks of fonts, skin layering, textures, and mouse/keyboard interaction.
 
 ## Updating
 
@@ -228,10 +269,10 @@ Download the latest repository files and replace the installed `ComboNext` plugi
 ### Versioning policy
 
 Use at most one new version number per calendar day, using the maintainer's local
-date. All changes on 2026-10-25 belong to **1.4**, including any further changes
-that day. Additional commits or uploads on the same day keep the existing version
-and update its dated changelog entry. On the next day with changes, advance to the
-next version (1.5, then 1.6, and so on); days without changes do not create releases.
+date. All changes on 2026-10-25 belong to **1.4**; the graphical update on
+2026-10-29 is **1.5**. Additional commits or uploads on the same day keep the existing
+version and update its dated changelog entry. On the next day with changes, advance
+to the next version (1.6, then 1.7, and so on); days without changes do not create releases.
 Keep `Constants.lua`, `ComboNext.plugin`, and the changelog consistent. This replaces
 the earlier per-update version numbering; existing Git history is left unchanged.
 

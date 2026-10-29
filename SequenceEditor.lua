@@ -5,6 +5,7 @@ import "ComboNext.Constants";
 import "ComboNext.ComboLogic";
 import "ComboNext.Localization";
 import "ComboNext.ClassTriggers";
+import "ComboNext.Theme";
 
 local L = ComboNextL;
 
@@ -19,6 +20,7 @@ end
 
 function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames, makeSkillRecord, save, changed, beginCapture, displayChanged, markItemReady)
     Turbine.UI.Lotro.Window.Constructor(self);
+    ComboNextTheme.DecorateWindow(self);
     self.settings = settings;
     self.getSkills = getSkills;
     self.getClassNames = getClassNames;
@@ -42,7 +44,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         math.max(0, math.floor((Turbine.UI.Display.GetHeight() - 696) / 2))
     );
 
-    self.previousCombo = Turbine.UI.Lotro.Button();
+    self.previousCombo = ComboNextTheme.Button();
     self.previousCombo:SetParent(self);
     self.previousCombo:SetPosition(16, 52);
     self.previousCombo:SetSize(92, 28);
@@ -51,23 +53,23 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         self:MoveCombo(-1);
     end;
 
-    self.nameBox = Turbine.UI.Lotro.TextBox();
+    self.nameBox = ComboNextTheme.TextBox();
     self.nameBox:SetParent(self);
     self.nameBox:SetPosition(16, 82);
-    self.nameBox:SetSize(145, 24);
+    self.nameBox:SetSize(121, 24);
     self.nameBox:SetMultiline(false);
 
-    self.saveName = Turbine.UI.Lotro.Button();
+    self.saveName = ComboNextTheme.Button();
     self.saveName:SetParent(self);
-    self.saveName:SetPosition(165, 82);
-    self.saveName:SetSize(55, 24);
+    self.saveName:SetPosition(141, 82);
+    self.saveName:SetSize(88, 24);
     self.saveName:SetText(L("editor.save"));
     self.saveName.Click = function()
         self:SaveCurrentName();
         self:Refresh();
     end;
 
-    self.nextCombo = Turbine.UI.Lotro.Button();
+    self.nextCombo = ComboNextTheme.Button();
     self.nextCombo:SetParent(self);
     self.nextCombo:SetPosition(370, 52);
     self.nextCombo:SetSize(112, 28);
@@ -76,7 +78,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         self:MoveCombo(1);
     end;
 
-    self.chooseCombo = Turbine.UI.Lotro.Button();
+    self.chooseCombo = ComboNextTheme.Button();
     self.chooseCombo:SetParent(self);
     self.chooseCombo:SetPosition(114, 52);
     self.chooseCombo:SetSize(250, 28);
@@ -138,7 +140,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         end
     end;
 
-    self.newCombo = Turbine.UI.Lotro.Button();
+    self.newCombo = ComboNextTheme.Button();
     self.newCombo:SetParent(self);
     self.newCombo:SetPosition(238, 82);
     self.newCombo:SetSize(110, 26);
@@ -148,7 +150,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         self:CreateCombo();
     end;
 
-    self.deleteCombo = Turbine.UI.Lotro.Button();
+    self.deleteCombo = ComboNextTheme.Button();
     self.deleteCombo:SetParent(self);
     self.deleteCombo:SetPosition(354, 82);
     self.deleteCombo:SetSize(128, 26);
@@ -157,7 +159,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         self:DeleteCombo();
     end;
 
-    self.multiFinisherToggle = Turbine.UI.Lotro.Button();
+    self.multiFinisherToggle = ComboNextTheme.Button();
     self.multiFinisherToggle:SetParent(self);
     self.multiFinisherToggle:SetPosition(16, 112);
     self.multiFinisherToggle:SetSize(210, 22);
@@ -337,7 +339,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
     self.detail:SetTextAlignment(Turbine.UI.ContentAlignment.MiddleLeft);
     self.detail:SetForeColor(Turbine.UI.Color(0.95, 0.95, 0.95));
 
-    self.triggerJoinButton = Turbine.UI.Lotro.Button();
+    self.triggerJoinButton = ComboNextTheme.Button();
     self.triggerJoinButton:SetParent(self);
     self.triggerJoinButton:SetPosition(230, 112);
     self.triggerJoinButton:SetSize(250, 22);
@@ -364,7 +366,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
     if (not classFound) then
         self.selectedClass = self.classNames[1];
     end
-    self.classButton = Turbine.UI.Lotro.Button();
+    self.classButton = ComboNextTheme.Button();
     self.classButton:SetParent(self);
     self.classButton:SetPosition(230, 198);
     self.classButton:SetSize(250, 24);
@@ -388,7 +390,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         menu:ShowMenu();
     end
 
-    self.searchBox = Turbine.UI.Lotro.TextBox();
+    self.searchBox = ComboNextTheme.TextBox();
     self.searchBox:SetParent(self);
     self.searchBox:SetPosition(230, 226);
     self.searchBox:SetSize(250, 24);
@@ -403,7 +405,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
     self.skillIcons = {};
     for i = 1, self.pageSize do
         local index = i;
-        local button = Turbine.UI.Lotro.Button();
+        local button = ComboNextTheme.Button();
         button:SetParent(self);
         button:SetPosition(260, 256 + (i - 1) * 25);
         button:SetSize(220, 24);
@@ -431,13 +433,13 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
     self.captureLabel:SetText(L("editor.captureLabel"));
     self.captureLabel:SetForeColor(Turbine.UI.Color(0.8, 0.8, 0.8));
 
-    self.captureText = Turbine.UI.Lotro.TextBox();
+    self.captureText = ComboNextTheme.TextBox();
     self.captureText:SetParent(self);
     self.captureText:SetPosition(230, 482);
     self.captureText:SetSize(250, 24);
     self.captureText:SetMultiline(false);
 
-    self.captureButton = Turbine.UI.Lotro.Button();
+    self.captureButton = ComboNextTheme.Button();
     self.captureButton:SetParent(self);
     self.captureButton:SetPosition(230, 512);
     self.captureButton:SetSize(120, 24);
@@ -454,7 +456,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         end
     end;
 
-    self.useCaptureButton = Turbine.UI.Lotro.Button();
+    self.useCaptureButton = ComboNextTheme.Button();
     self.useCaptureButton:SetParent(self);
     self.useCaptureButton:SetPosition(354, 512);
     self.useCaptureButton:SetSize(126, 24);
@@ -476,7 +478,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         });
     end;
 
-    self.previousButton = Turbine.UI.Lotro.Button();
+    self.previousButton = ComboNextTheme.Button();
     self.previousButton:SetParent(self);
     self.previousButton:SetPosition(230, 432);
     self.previousButton:SetSize(78, 24);
@@ -486,7 +488,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         self:Refresh();
     end;
 
-    self.nextButton = Turbine.UI.Lotro.Button();
+    self.nextButton = ComboNextTheme.Button();
     self.nextButton:SetParent(self);
     self.nextButton:SetPosition(314, 432);
     self.nextButton:SetSize(70, 24);
@@ -497,7 +499,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         self:Refresh();
     end;
 
-    self.refreshSkillsButton = Turbine.UI.Lotro.Button();
+    self.refreshSkillsButton = ComboNextTheme.Button();
     self.refreshSkillsButton:SetParent(self);
     self.refreshSkillsButton:SetPosition(390, 432);
     self.refreshSkillsButton:SetSize(90, 24);
@@ -521,7 +523,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
     self.legendFinisher:SetText(L("editor.legendFinisher"));
     self.legendFinisher:SetForeColor(Turbine.UI.Color(1, 0.8, 0.25));
 
-    self.addPairButton = Turbine.UI.Lotro.Button();
+    self.addPairButton = ComboNextTheme.Button();
     self.addPairButton:SetParent(self);
     self.addPairButton:SetPosition(16, 440);
     self.addPairButton:SetSize(202, 26);
@@ -531,7 +533,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
     end;
 
 
-    self.moveLeftButton = Turbine.UI.Lotro.Button();
+    self.moveLeftButton = ComboNextTheme.Button();
     self.moveLeftButton:SetParent(self);
     self.moveLeftButton:SetPosition(16, 530);
     self.moveLeftButton:SetSize(98, 26);
@@ -540,7 +542,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         self:MoveCell(-1);
     end;
 
-    self.moveRightButton = Turbine.UI.Lotro.Button();
+    self.moveRightButton = ComboNextTheme.Button();
     self.moveRightButton:SetParent(self);
     self.moveRightButton:SetPosition(120, 530);
     self.moveRightButton:SetSize(98, 26);
@@ -549,7 +551,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         self:MoveCell(1);
     end;
 
-    self.addTriggerButton = Turbine.UI.Lotro.Button();
+    self.addTriggerButton = ComboNextTheme.Button();
     self.addTriggerButton:SetParent(self);
     self.addTriggerButton:SetPosition(16, 470);
     self.addTriggerButton:SetSize(98, 26);
@@ -558,7 +560,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         self:InsertCell("T");
     end;
 
-    self.addFinisherButton = Turbine.UI.Lotro.Button();
+    self.addFinisherButton = ComboNextTheme.Button();
     self.addFinisherButton:SetParent(self);
     self.addFinisherButton:SetPosition(120, 470);
     self.addFinisherButton:SetSize(98, 26);
@@ -567,7 +569,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         self:InsertCell("F");
     end;
 
-    self.removeCellButton = Turbine.UI.Lotro.Button();
+    self.removeCellButton = ComboNextTheme.Button();
     self.removeCellButton:SetParent(self);
     self.removeCellButton:SetPosition(16, 500);
     self.removeCellButton:SetSize(98, 26);
@@ -576,7 +578,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         self:RemoveCell();
     end;
 
-    self.clearButton = Turbine.UI.Lotro.Button();
+    self.clearButton = ComboNextTheme.Button();
     self.clearButton:SetParent(self);
     self.clearButton:SetPosition(120, 500);
     self.clearButton:SetSize(98, 26);
@@ -585,7 +587,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         self:Clear(self.selectedSlot);
     end;
 
-    self.resetComboButton = Turbine.UI.Lotro.Button();
+    self.resetComboButton = ComboNextTheme.Button();
     self.resetComboButton:SetParent(self);
     self.resetComboButton:SetPosition(16, 560);
     self.resetComboButton:SetSize(98, 26);
@@ -593,7 +595,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
     self.resetComboButton.Click = function()
         self:ResetCombo();
     end;
-    self.priorityButton = Turbine.UI.Lotro.Button();
+    self.priorityButton = ComboNextTheme.Button();
     self.priorityButton:SetParent(self);
     self.priorityButton:SetPosition(120, 560);
     self.priorityButton:SetSize(98, 26);
@@ -631,7 +633,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
     end;
     self.effectScope = "self";
     self.effectEvent = "gained";
-    self.scopeButton = Turbine.UI.Lotro.Button();
+    self.scopeButton = ComboNextTheme.Button();
     self.scopeButton:SetParent(self);
     self.scopeButton:SetPosition(230, 404);
     self.scopeButton:SetSize(120, 24);
@@ -639,7 +641,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         self.effectScope = self.effectScope == "self" and "target" or "self";
         self:Refresh();
     end;
-    self.eventButton = Turbine.UI.Lotro.Button();
+    self.eventButton = ComboNextTheme.Button();
     self.eventButton:SetParent(self);
     self.eventButton:SetPosition(360, 404);
     self.eventButton:SetSize(120, 24);
@@ -648,7 +650,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         self:Refresh();
     end;
 
-    self.anyOrderButton = Turbine.UI.Lotro.Button();
+    self.anyOrderButton = ComboNextTheme.Button();
     self.anyOrderButton:SetParent(self);
     self.anyOrderButton:SetPosition(230, 576);
     self.anyOrderButton:SetSize(250, 26);
@@ -683,12 +685,12 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
     self.itemTimerLabel:SetSize(146, 24);
     self.itemTimerLabel:SetText(L("editor.itemCooldown"));
     self.itemTimerLabel:SetForeColor(Turbine.UI.Color(0.95, 0.95, 0.95));
-    self.itemTimerText = Turbine.UI.Lotro.TextBox();
+    self.itemTimerText = ComboNextTheme.TextBox();
     self.itemTimerText:SetParent(self);
     self.itemTimerText:SetPosition(166, 608);
     self.itemTimerText:SetSize(56, 24);
     self.itemTimerText:SetMultiline(false);
-    self.itemTimerSave = Turbine.UI.Lotro.Button();
+    self.itemTimerSave = ComboNextTheme.Button();
     self.itemTimerSave:SetParent(self);
     self.itemTimerSave:SetPosition(230, 608);
     self.itemTimerSave:SetSize(96, 24);
@@ -721,7 +723,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
             self.status:SetText(L("editor.itemTimerSaved"));
         end
     end;
-    self.itemReadyButton = Turbine.UI.Lotro.Button();
+    self.itemReadyButton = ComboNextTheme.Button();
     self.itemReadyButton:SetParent(self);
     self.itemReadyButton:SetPosition(334, 608);
     self.itemReadyButton:SetSize(146, 24);
@@ -741,7 +743,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
     self.classValueLabel:SetSize(180, 24);
     self.classValueLabel:SetText(L("class.configure"));
     self.classValueLabel:SetForeColor(Turbine.UI.Color(0.95, 0.95, 0.95));
-    self.classCompareButton = Turbine.UI.Lotro.Button();
+    self.classCompareButton = ComboNextTheme.Button();
     self.classCompareButton:SetParent(self);
     self.classCompareButton:SetPosition(200, 608);
     self.classCompareButton:SetSize(68, 24);
@@ -762,12 +764,12 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         end
         self.classCompareButton:SetText(L("class.compare." .. self.classCompare));
     end;
-    self.classValueText = Turbine.UI.Lotro.TextBox();
+    self.classValueText = ComboNextTheme.TextBox();
     self.classValueText:SetParent(self);
     self.classValueText:SetPosition(276, 608);
     self.classValueText:SetSize(66, 24);
     self.classValueText:SetMultiline(false);
-    self.classValueSave = Turbine.UI.Lotro.Button();
+    self.classValueSave = ComboNextTheme.Button();
     self.classValueSave:SetParent(self);
     self.classValueSave:SetPosition(350, 608);
     self.classValueSave:SetSize(130, 24);
@@ -783,7 +785,7 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
         end
         self:Assign(record);
     end;
-    self.shareButton = Turbine.UI.Lotro.Button();
+    self.shareButton = ComboNextTheme.Button();
     self.shareButton:SetParent(self);
     self.shareButton:SetPosition(230, 546);
     self.shareButton:SetSize(250, 26);
@@ -803,6 +805,9 @@ function ComboNextSequenceEditor:Constructor(settings, getSkills, getClassNames,
 
     self:SelectLastCell();
     self:Refresh();
+    if (ComboNextTheme.Profile().custom) then
+        self:ApplyTheme(ComboNextTheme.Accent(), ComboNextTheme.Text());
+    end
     self:SetVisible(true);
 end
 

@@ -5,6 +5,7 @@ import "ComboNext.Constants";
 import "ComboNext.ComboLogic";
 import "ComboNext.ClassTriggers";
 import "ComboNext.Localization";
+import "ComboNext.Theme";
 
 local L = ComboNextL;
 local HEADER = "CN5";
@@ -102,6 +103,7 @@ ComboNextShareWindow = class(Turbine.UI.Lotro.Window);
 
 function ComboNextShareWindow:Constructor(settings, save, changed, findSkill, editor)
     Turbine.UI.Lotro.Window.Constructor(self);
+    ComboNextTheme.DecorateWindow(self);
     self.settings = settings;
     self.save = save;
     self.changed = changed;
@@ -123,7 +125,7 @@ function ComboNextShareWindow:Constructor(settings, save, changed, findSkill, ed
     hint:SetForeColor(Turbine.UI.Color(0.9, 0.85, 0.65));
     self.hint = hint;
 
-    self.box = Turbine.UI.Lotro.TextBox();
+    self.box = ComboNextTheme.TextBox();
     self.box:SetParent(self);
     self.box:SetPosition(16, 80);
     self.box:SetSize(428, 170);
@@ -131,7 +133,7 @@ function ComboNextShareWindow:Constructor(settings, save, changed, findSkill, ed
     self.box:SetText("");
 
     local function addButton(x, y, w, key, handler)
-        local button = Turbine.UI.Lotro.Button();
+        local button = ComboNextTheme.Button();
         button:SetParent(self);
         button:SetPosition(x, y);
         button:SetSize(w, 26);
@@ -152,6 +154,9 @@ function ComboNextShareWindow:Constructor(settings, save, changed, findSkill, ed
     self.status:SetPosition(16, 320);
     self.status:SetSize(428, 20);
     self.status:SetForeColor(Turbine.UI.Color(0.9, 0.85, 0.65));
+    if (ComboNextTheme.Profile().custom) then
+        self:ApplyTheme(ComboNextTheme.Accent(), ComboNextTheme.Text());
+    end
 end
 
 function ComboNextShareWindow:ApplyTheme(accent, status)
